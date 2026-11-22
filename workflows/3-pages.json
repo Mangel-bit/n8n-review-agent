@@ -1,0 +1,472 @@
+{
+  "id": "reviewDeskPage01",
+  "name": "Review Agent · 3 Pages",
+  "active": false,
+  "nodes": [
+    {
+      "name": "Reviews page",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        0
+      ],
+      "webhookId": "8c3f4e5a-6b7c-4d81-9ea2-b4c5d6e7f830",
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "reviews",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "0075ab98-f274-4dd1-a0a5-1f8e5895decb"
+    },
+    {
+      "name": "Get reviews",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        240,
+        0
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Review desk reviews"
+        },
+        "matchType": "anyCondition",
+        "filters": {},
+        "returnAll": true
+      },
+      "executeOnce": true,
+      "alwaysOutputData": true,
+      "id": "9e2551f8-f89e-4dbe-9a61-de1eaaeaefbd"
+    },
+    {
+      "name": "Get guests",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        480,
+        0
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Review desk guests"
+        },
+        "matchType": "anyCondition",
+        "filters": {},
+        "returnAll": true
+      },
+      "executeOnce": true,
+      "alwaysOutputData": true,
+      "id": "d48121a4-31ab-482d-928e-bda49578259c"
+    },
+    {
+      "name": "Render reviews",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        720,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const CFG = {\"business\":\"Little Fig Kitchen\",\"ownerName\":\"Sam\",\"city\":\"Portland\",\"reviewLink\":\"https://littlefig.kitchen/review\",\"testMode\":true,\"aiModel\":\"claude-opus-5-5\"};\n// Shared helpers, added to the top of every Code node by build.js. CFG comes from config.json.\nconst today = (typeof $now !== 'undefined' && $now && $now.toISODate) ? $now.toISODate() : new Date().toISOString().slice(0, 10);\nconst nowIso = new Date().toISOString();\nconst MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];\nconst DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];\nconst num = (v) => { const n = Number(v); return Number.isFinite(n) ? n : 0; };\nconst esc = (s) => String(s ?? '').replace(/[&<>\"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', \"'\": '&#39;' }[c]));\nconst parseJson = (s, fallback) => { try { const v = JSON.parse(s); return v ?? fallback; } catch { return fallback; } };\nconst fmtDate = (s) => { const d = new Date(s); return isNaN(d) ? '' : `${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}`; };\nconst daysAgoIso = (n, h = 19, m = 0) => { const d = new Date(Date.now() - n * 86400000); d.setUTCHours(h, m, 0, 0); return d.toISOString(); };\nconst ago = (s) => {\n  const mins = Math.round((Date.now() - new Date(s).getTime()) / 60000);\n  if (!Number.isFinite(mins)) return '';\n  if (mins < 2) return 'just now';\n  if (mins < 60) return `${mins} min ago`;\n  const h = Math.round(mins / 60); if (h < 24) return `${h} hour${h > 1 ? 's' : ''} ago`;\n  const d = Math.round(h / 24); return d === 1 ? 'yesterday' : `${d} days ago`;\n};\nconst first = (name) => String(name || '').trim().split(/\\s+/)[0] || 'there';\n\n// What people talk about, and how each one is called on screen.\nconst TOPICS = { food: 'Food', service: 'Service', wait_time: 'Wait time', price: 'Price', cleanliness: 'Cleanliness', atmosphere: 'Atmosphere', delivery: 'Takeout and delivery', staff: 'Staff', drinks: 'Drinks', other: 'Other' };\n\n// The owner's own voice, carried into English. Every prompt that writes text includes this.\nconst VOICE = `Write in ${CFG.ownerName}'s own voice, in English. ${CFG.ownerName} owns ${CFG.business}, a small neighborhood restaurant in ${CFG.city}. This is how he writes:\n- Connected, the way he talks: one flowing thought where each sentence comes out of the one before, joined with \"and\", \"but\", \"so\", \"because\". Not a string of short separate sentences, and not many full stops.\n- Natural order: thank them or acknowledge what happened, then the specific thing they mentioned, then how he feels about it, then what happens next or an invitation.\n- Warm and plain: everyday words, the guest's first name, and the real details they mentioned (the dish, the server, the night), never generic praise.\n- When something went wrong he owns it without excuses or arguing, he says the feeling plainly (\"I'm really sorry, that's not what we want anyone to get\"), and he offers something concrete like asking them to reach out or come back on him.\n- Fair: if he disagrees with something he says it gently and admits their side first.\n- Words like \"really\", \"honestly\", \"totally\" show up now and then, never all together.\n- Never: corporate phrases (we value your feedback, we strive, we apologize for any inconvenience, valued customer), em dashes, exclamation marks, emoji, hashtags, or a wise-sounding closing line.`;\n\n// Shared look: a restaurant kitchen pass. Steel, order tickets hanging on a rail, tomato red and mustard.\nconst FONTS = 'https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900&family=Courier+Prime:wght@400;700&display=swap';\nconst BASE_CSS = `\n:root{--steel:#DCE1E4;--steel-2:#C3CBD0;--steel-hi:#F0F3F4;--night:#202529;--night-2:#2C3338;--ink:#1D1B1A;--muted:#5F666B;\n--ticket:#FFFFFD;--line:#E4E2DC;--tomato:#D7372B;--mustard:#EDB02A;--basil:#2E7A4B;--fig:#6E2E5E;\n--f:\"Archivo\",\"Segoe UI\",system-ui,sans-serif;--t:\"Courier Prime\",\"Courier New\",monospace}\n*{box-sizing:border-box}\nhtml{-webkit-text-size-adjust:100%}\nbody{margin:0;background:var(--steel-hi);color:var(--ink);font-family:var(--f);font-size:15.5px;line-height:1.5;-webkit-font-smoothing:antialiased}\na{color:inherit}button,input,textarea,select{font:inherit;color:inherit}\n:focus-visible{outline:2.5px solid var(--mustard);outline-offset:2px;border-radius:4px}\n.wrap{max-width:1240px;margin:0 auto;padding:0 28px}\nh1,h2,h3{margin:0;line-height:1.05;font-stretch:80%;font-weight:850;letter-spacing:-.01em}\np{margin:0}\n.bar{background:var(--night);color:#EEF1F2}\n.bar .wrap{display:flex;align-items:center;gap:22px;height:62px}\n.brand{display:flex;align-items:center;gap:10px;text-decoration:none;font-weight:800;font-stretch:85%;font-size:19px;letter-spacing:.005em}\n.brand svg{width:30px;height:30px}\n.brand small{font-weight:500;font-stretch:100%;font-size:14px;color:#A9B2B8;margin-left:2px}\n.nav{display:flex;gap:4px}\n.nav a{text-decoration:none;padding:8px 13px;border-radius:8px;color:#C5CDD2;font-weight:600;font-size:14.5px}\n.nav a[aria-current]{background:var(--night-2);color:#fff}\n.grow{flex:1}\n.chip{display:inline-flex;align-items:center;gap:8px;font-size:13px;color:#A9B2B8;border:1px solid #3A4248;border-radius:999px;padding:5px 12px}\n.chip i{width:7px;height:7px;border-radius:50%;background:var(--mustard)}\n.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;border:0;border-radius:9px;padding:11px 18px;font-weight:750;font-size:15px;cursor:pointer;text-decoration:none;font-stretch:95%}\n.btn:active{transform:translateY(1px)}\n.btn.red{background:var(--tomato);color:#fff}.btn.red:hover{background:#c22e23}\n.btn.dark{background:var(--ink);color:#fff}.btn.dark:hover{background:#000}\n.btn.line{background:transparent;border:1.5px solid var(--steel-2);color:var(--ink)}.btn.line:hover{border-color:var(--ink)}\n.btn[disabled]{opacity:.55;cursor:default}\n.stars{color:var(--mustard);letter-spacing:1px;white-space:nowrap}\n.stars .off{color:#CBD1D5}\n.tag{display:inline-flex;align-items:center;gap:6px;font-family:var(--t);font-weight:700;font-size:12px;letter-spacing:.04em;border-radius:5px;padding:2px 8px;text-transform:uppercase;border:1.5px solid currentColor}\n.tag.red{color:var(--tomato)}.tag.green{color:var(--basil)}.tag.gray{color:var(--muted)}.tag.fig{color:var(--fig)}\n.flash{background:var(--mustard);color:var(--ink);font-weight:650;padding:12px 16px;border-radius:10px}\n@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}\n@media (max-width:720px){.wrap{padding:0 16px}.bar .chip,.brand small{display:none}.bar .wrap{gap:10px}}\n`;\nconst FIG = `<svg viewBox=\"0 0 30 30\" aria-hidden=\"true\"><path d=\"M15 6c-1-2.6.4-4.4 2.6-4.6\" fill=\"none\" stroke=\"#7DB36A\" stroke-width=\"2\" stroke-linecap=\"round\"/>\n<path d=\"M15 6c5.5 0 10 6.2 10 12.2C25 24 20.6 28 15 28S5 24 5 18.2C5 12.2 9.5 6 15 6z\" fill=\"#8E3B79\"/><path d=\"M11 17c1.3 3.4 4.4 5 7.6 4.2\" fill=\"none\" stroke=\"#C886B6\" stroke-width=\"1.6\" stroke-linecap=\"round\"/></svg>`;\nconst head = (title, css = '') => `<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">\n<title>${esc(title)}</title><link rel=\"preconnect\" href=\"https://fonts.googleapis.com\"><link rel=\"stylesheet\" href=\"${FONTS}\"><style>${BASE_CSS}${css}</style></head><body>`;\nconst topBar = (page) => `<header class=\"bar\"><div class=\"wrap\"><a class=\"brand\" href=\"/webhook/reviews\">${FIG}${esc(CFG.business)}<small>Review desk</small></a>\n<nav class=\"nav\"><a href=\"/webhook/reviews\" ${page === 'reviews' ? 'aria-current=\"page\"' : ''}>Reviews</a><a href=\"/webhook/guests\" ${page === 'guests' ? 'aria-current=\"page\"' : ''}>Guest texts</a></nav>\n<span class=\"grow\"></span><span class=\"chip\"><i></i>Demo mode, nothing gets posted for real</span></div></header>`;\nconst starRow = (n) => { const k = Math.round(num(n)); return `<span class=\"stars\" aria-label=\"${k} out of 5 stars\">${'★'.repeat(k)}<span class=\"off\">${'★'.repeat(5 - k)}</span></span>`; };\n\n// The review desk: tickets that need Sam hang on the pass, then the numbers, what people keep mentioning, and every review.\nconst q = ($('Reviews page').first().json.query) || {};\nconst reviews = $('Get reviews').all().map((i) => i.json).filter((r) => r.review_id)\n  .sort((a, b) => String(b.posted_at).localeCompare(String(a.posted_at)));\nconst guests = $('Get guests').all().map((i) => i.json).filter((g) => g.guest_id);\nconst newest = reviews.find((r) => r.batch === 'live');\nconst freshId = q.new === '1' && newest ? newest.review_id : '';\n\nconst onPass = reviews.filter((r) => ['needs_you', 'escalated', 'flagged'].includes(r.status));\nconst month = Date.now() - 30 * 86400000, week = Date.now() - 7 * 86400000, fortnight = Date.now() - 14 * 86400000;\nconst counted = reviews.filter((r) => r.kind !== 'suspicious' && new Date(r.posted_at).getTime() >= month);\nconst avg = counted.length ? counted.reduce((s, r) => s + num(r.stars), 0) / counted.length : 0;\nconst real = reviews.filter((r) => r.kind !== 'suspicious');\nconst answered = real.filter((r) => r.reply_status === 'posted').length;\nconst caught = guests.filter((g) => g.status === 'unhappy' && new Date(g.answered_at).getTime() >= week);\nconst live = reviews.filter((r) => r.batch === 'live' && r.reply_status === 'posted' && r.replied_at);\nconst fastest = live.length ? Math.min(...live.map((r) => (new Date(r.replied_at) - new Date(r.posted_at)) / 1000)) : 0;\n\n// Topics over the last two weeks, from public reviews and private texts.\nconst tally = {};\nconst add = (t, src) => { if (!TOPICS[t.topic]) return; const x = (tally[t.topic] = tally[t.topic] || { pos: 0, neg: 0, quotes: [] }); x[t.feeling === 'negative' ? 'neg' : 'pos']++; if (t.feeling === 'negative' && x.quotes.length < 3) x.quotes.push({ detail: t.detail, src }); };\nreviews.filter((r) => r.kind !== 'suspicious' && new Date(r.posted_at).getTime() >= fortnight).forEach((r) => parseJson(r.topics, []).forEach((t) => add(t, 'review')));\nguests.filter((g) => g.answered_at && new Date(g.answered_at).getTime() >= fortnight).forEach((g) => parseJson(g.topics, []).forEach((t) => add(t, 'text')));\nconst topicRows = Object.entries(tally).filter(([k]) => k !== 'other').sort((a, b) => (b[1].neg * 3 + b[1].pos) - (a[1].neg * 3 + a[1].pos)).slice(0, 6);\nconst maxTopic = Math.max(1, ...topicRows.map(([, v]) => v.pos + v.neg));\nconst hot = topicRows.find(([, v]) => v.neg >= 3);\n\nlet banner = '';\nif (freshId) {\n  const r = newest;\n  banner = r.status === 'replied' ? `New ${r.stars}-star review from ${first(r.reviewer)}, and I already replied to it` :\n    r.status === 'needs_you' ? `New ${r.stars}-star review from ${first(r.reviewer)}, I wrote a reply but I'm holding it for you, it's on the pass` :\n      r.status === 'flagged' ? `New review from ${r.reviewer} looks fake, so I didn't reply, it's on the pass` :\n        `New review from ${first(r.reviewer)} needs you before anyone replies, it's on the pass`;\n} else if (q.done === 'reset') banner = 'The demo is back to the start';\nelse if (q.done) banner = { post: 'Posted your reply', skip: 'Okay, no reply on that one', handled: 'Marked as handled', report: 'Reported as fake' }[q.done] || '';\n\nconst CSS = `\n.pass{background:linear-gradient(180deg,#CBD2D7 0%,var(--steel) 34%,#E6EAEC 100%);border-bottom:1px solid var(--steel-2);padding:26px 0 40px;position:relative;overflow:hidden}\n.pass::before{content:\"\";position:absolute;inset:0;background:repeating-linear-gradient(90deg,rgba(255,255,255,.18) 0 2px,transparent 2px 7px);pointer-events:none}\n.pass .wrap{position:relative;display:grid;grid-template-columns:minmax(0,1.75fr) minmax(300px,1fr);gap:30px;align-items:start}\n.pass-head{display:flex;align-items:baseline;gap:14px;margin-bottom:6px}\n.pass-head h1{font-size:clamp(34px,4vw,52px)}\n.pass-head span{color:var(--muted);font-weight:600}\n.rail{height:16px;border-radius:8px;background:linear-gradient(180deg,#F6F8F9 0%,#AEB7BD 45%,#8A949B 55%,#C9D0D4 100%);box-shadow:0 3px 6px rgba(0,0,0,.18),inset 0 1px 0 #fff;margin-top:12px;position:relative;z-index:2}\n.tickets{display:flex;gap:18px;padding:0 14px;margin-top:-6px;flex-wrap:wrap;min-height:200px}\n.ticket{position:relative;width:236px;background:var(--ticket);padding:22px 16px 26px;box-shadow:0 14px 22px -12px rgba(0,0,0,.38);transform-origin:50% -10px;transform:rotate(var(--r));text-decoration:none;display:block;\n  -webkit-mask:radial-gradient(7px at 50% 100%,#0000 98%,#000) 50% 100%/14px 100% repeat-x;mask:radial-gradient(7px at 50% 100%,#0000 98%,#000) 50% 100%/14px 100% repeat-x;transition:transform .2s}\n.ticket:hover{transform:rotate(0deg) translateY(3px)}\n.ticket::before{content:\"\";position:absolute;top:0;left:50%;width:46px;height:14px;margin-left:-23px;background:linear-gradient(180deg,#9AA3A9,#D6DBDE);border-radius:0 0 4px 4px}\n.ticket .t-top{display:flex;justify-content:space-between;align-items:center;gap:8px;font-family:var(--t);font-size:12px;color:var(--muted);border-bottom:1.5px dashed #CFCBC2;padding-bottom:8px;margin-bottom:10px}\n.ticket .who{font-weight:800;font-stretch:85%;font-size:18px;line-height:1.1}\n.ticket .txt{font-family:var(--t);font-size:13.5px;line-height:1.45;margin:8px 0 12px;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden}\n.ticket .what{font-size:13px;font-weight:650;border-top:1.5px dashed #CFCBC2;padding-top:9px}\n.ticket .what.red{color:var(--tomato)}.ticket .what.fig{color:var(--fig)}\n.ticket.fresh{animation:hang .9s cubic-bezier(.3,1.4,.5,1) both .2s}\n@keyframes hang{0%{transform:translateY(-140%) rotate(-14deg);opacity:0}45%{opacity:1}70%{transform:translateY(0) rotate(5deg)}85%{transform:rotate(-2deg)}100%{transform:rotate(var(--r))}}\n.ticket.clear{width:300px}\n.ticket.clear .who{font-size:22px}\n.try{background:var(--ticket);border-radius:14px;padding:20px;box-shadow:0 12px 30px -18px rgba(0,0,0,.4);display:grid;gap:12px}\n.try h2{font-size:24px}\n.try p.sub{color:var(--muted);font-size:14px;margin-top:-6px}\n.samples{display:flex;flex-wrap:wrap;gap:6px}\n.samples button{border:1px solid var(--line);background:#F6F5F1;border-radius:999px;padding:5px 11px;font-size:13px;cursor:pointer}\n.samples button:hover{border-color:var(--ink)}\n.try label{font-size:13px;font-weight:650;color:var(--muted);display:grid;gap:4px}\n.try input[type=text],.try textarea{width:100%;border:1.5px solid var(--line);border-radius:9px;padding:10px 12px;background:#fff}\n.try textarea{min-height:98px;resize:vertical;font-family:var(--t);font-size:14px}\n.pick{display:flex;gap:2px;flex-direction:row-reverse;justify-content:flex-end}\n.pick input{position:absolute;opacity:0;pointer-events:none}\n.pick label{font-size:28px;line-height:1;color:#CBD1D5;cursor:pointer;padding:0 1px}\n.pick input:checked~label,.pick label:hover,.pick label:hover~label{color:var(--mustard)}\n.pick input:focus-visible+label{outline:2px solid var(--ink);border-radius:4px}\n.try.busy{opacity:.75}\n.reading{display:none;font-family:var(--t);font-size:13.5px;color:var(--tomato)}\n.try.busy .reading{display:block}\n.flashwrap{margin-top:-20px;position:relative;z-index:3}\n.stats{display:grid;grid-template-columns:1.3fr 1fr 1fr;gap:0;margin:34px auto 0;background:#fff;border:1px solid var(--line);border-radius:16px;overflow:hidden}\n.stat{padding:22px 26px;border-right:1px solid var(--line)}\n.stat:last-child{border-right:0}\n.stat .k{font-size:14px;color:var(--muted);font-weight:600}\n.stat .v{font-size:44px;font-weight:850;font-stretch:80%;line-height:1.05;margin-top:4px;display:flex;align-items:baseline;gap:10px}\n.stat .v .stars{font-size:22px}\n.stat small{color:var(--muted);font-size:13.5px}\n.section{margin-top:40px}\n.section > h2{font-size:28px;margin-bottom:14px}\n.alert{background:#FFF4D6;border:1.5px solid var(--mustard);border-radius:12px;padding:14px 16px;font-weight:600;margin-bottom:14px}\n.topics{background:#fff;border:1px solid var(--line);border-radius:16px;padding:8px 22px}\n.trow{display:grid;grid-template-columns:170px minmax(0,1fr) minmax(0,1.3fr);gap:18px;align-items:center;padding:13px 0;border-bottom:1px solid var(--line)}\n.trow:last-child{border-bottom:0}\n.trow b{font-weight:750}\n.bars{display:flex;height:12px;border-radius:6px;overflow:hidden;background:#EEF0F1}\n.bars i{display:block;height:100%}\n.bars .p{background:var(--basil)}.bars .n{background:var(--tomato)}\n.trow .cnt{font-size:12.5px;color:var(--muted);margin-top:4px}\n.trow q{font-family:var(--t);font-size:13.5px;color:var(--muted);quotes:\"\\\\201C\" \"\\\\201D\"}\n.feed{display:grid;gap:14px;margin-bottom:50px}\n.rev{background:#fff;border:1px solid var(--line);border-radius:16px;padding:20px 22px;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:24px;scroll-margin-top:20px}\n.rev.fresh{animation:pop 2.6s ease both}\n@keyframes pop{0%,25%{box-shadow:0 0 0 4px var(--mustard)}100%{box-shadow:0 0 0 0 transparent}}\n.rev .meta{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:13.5px;color:var(--muted)}\n.rev .name{font-weight:800;font-stretch:85%;font-size:19px;color:var(--ink)}\n.rev .body{font-family:var(--t);font-size:14.5px;margin-top:10px;line-height:1.55}\n.rev .side{border-left:1.5px dashed var(--line);padding-left:22px;display:grid;gap:10px;align-content:start}\n.reply{background:#F6F5F1;border-radius:10px;padding:12px 14px;font-size:14.5px}\n.reply .by{font-size:12.5px;color:var(--muted);margin-bottom:4px;font-weight:600}\n.note{font-size:14.5px}\n.note b{display:block;font-size:12.5px;color:var(--muted)}\n.edit textarea{width:100%;min-height:120px;border:1.5px solid var(--line);border-radius:10px;padding:10px 12px;font-size:14.5px;resize:vertical}\n.acts{display:flex;gap:10px;flex-wrap:wrap}\nfooter{border-top:1px solid var(--line);padding:22px 0 40px;color:var(--muted);font-size:14px}\nfooter .wrap{display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;align-items:center}\nfooter button{background:none;border:1.5px solid var(--steel-2);border-radius:8px;padding:8px 14px;cursor:pointer}\n@media (max-width:1000px){.pass .wrap{grid-template-columns:1fr}.rev{grid-template-columns:1fr}.rev .side{border-left:0;padding-left:0;border-top:1.5px dashed var(--line);padding-top:14px}}\n@media (max-width:720px){.stats{grid-template-columns:1fr}.stat{border-right:0;border-bottom:1px solid var(--line)}.trow{grid-template-columns:1fr}.ticket{width:100%}.tickets{padding:0}}\n`;\n\nconst passTicket = (r, i) => {\n  const what = r.status === 'escalated' ? { c: 'red', t: \"Didn't reply. This one should come from you\" }\n    : r.status === 'flagged' ? { c: 'fig', t: 'Looks fake, so no reply' }\n      : { c: 'red', t: 'Reply drafted, waiting for you' };\n  const tag = r.status === 'escalated' ? '<span class=\"tag red\">Careful</span>' : r.status === 'flagged' ? '<span class=\"tag fig\">Fake?</span>' : '<span class=\"tag red\">Needs you</span>';\n  return `<a class=\"ticket ${r.review_id === freshId ? 'fresh' : ''}\" style=\"--r:${[-2.2, 1.8, -1, 2.6][i % 4]}deg\" href=\"#${esc(r.review_id)}\">\n    <div class=\"t-top\">${starRow(r.stars)}${tag}</div><div class=\"who\">${esc(r.reviewer)}</div><p class=\"txt\">${esc(r.text)}</p>\n    <div class=\"what ${what.c}\">${what.t}</div></a>`;\n};\n\nconst reviewCard = (r) => {\n  const when = ago(r.posted_at);\n  const status = { replied: '<span class=\"tag green\">Replied</span>', needs_you: '<span class=\"tag red\">Needs you</span>', escalated: '<span class=\"tag red\">Careful</span>',\n    flagged: '<span class=\"tag fig\">Looks fake</span>', done: '<span class=\"tag gray\">No reply</span>', handled: '<span class=\"tag gray\">Handled</span>', reported: '<span class=\"tag fig\">Reported</span>' }[r.status] || '';\n  const replyAfter = r.replied_at ? Math.max(1, Math.round((new Date(r.replied_at) - new Date(r.posted_at)) / 1000)) : 0;\n  const after = replyAfter < 90 ? `${replyAfter} seconds after` : replyAfter < 5400 ? `${Math.round(replyAfter / 60)} min after` : `${Math.round(replyAfter / 3600)} hours after`;\n  let side = '';\n  if (r.alert) side += `<div class=\"alert\">${esc(r.alert)}</div>`;\n  if (r.agent_note && r.status !== 'replied') side += `<p class=\"note\"><b>Note for you</b>${esc(r.agent_note)}</p>`;\n  if (r.reply_status === 'posted') side += `<div class=\"reply\"><div class=\"by\">Replied as ${esc(CFG.ownerName)}, ${after}</div>${esc(r.reply)}</div>`;\n  else if (r.status === 'needs_you') side += `<form class=\"edit\" method=\"post\" action=\"/webhook/reviews-act\"><input type=\"hidden\" name=\"review_id\" value=\"${esc(r.review_id)}\">\n    <label class=\"by\" for=\"t-${esc(r.review_id)}\" style=\"font-size:12.5px;color:var(--muted);font-weight:600\">Reply I wrote for you, change anything you want</label>\n    <textarea id=\"t-${esc(r.review_id)}\" name=\"reply\">${esc(r.reply)}</textarea><div class=\"acts\" style=\"margin-top:10px\"><button class=\"btn red\" name=\"action\" value=\"post\">Post reply</button><button class=\"btn line\" name=\"action\" value=\"skip\">Don't reply</button></div></form>`;\n  else if (r.status === 'escalated') side += `<form class=\"acts\" method=\"post\" action=\"/webhook/reviews-act\"><input type=\"hidden\" name=\"review_id\" value=\"${esc(r.review_id)}\"><button class=\"btn dark\" name=\"action\" value=\"handled\">I've handled it</button></form>`;\n  else if (r.status === 'flagged') side += `<form class=\"acts\" method=\"post\" action=\"/webhook/reviews-act\"><input type=\"hidden\" name=\"review_id\" value=\"${esc(r.review_id)}\"><button class=\"btn dark\" name=\"action\" value=\"report\">Report as fake</button><button class=\"btn line\" name=\"action\" value=\"skip\">Leave it</button></form>`;\n  else if (!side) side = `<p class=\"note\" style=\"color:var(--muted)\">No reply on this one.</p>`;\n  return `<article class=\"rev ${r.review_id === freshId ? 'fresh' : ''}\" id=\"${esc(r.review_id)}\"><div><div class=\"meta\"><span class=\"name\">${esc(r.reviewer)}</span>${starRow(r.stars)}<span>${esc(when)}</span>${status}</div>\n    <p class=\"body\">${esc(r.text)}</p></div><div class=\"side\">${side}</div></article>`;\n};\n\nconst SAMPLES = [\n  { label: '1 star, cold takeout', reviewer: 'Jordan Reyes', stars: 1, text: \"Ordered takeout last night and everything was cold by the time I got it home, and it's a 10 minute drive. For $68 I expected a lot better. Won't be ordering again.\" },\n  { label: '5 stars, anniversary', reviewer: 'Kate Morrison', stars: 5, text: 'Came here for our anniversary and it was perfect. The fig flatbread and the short rib were amazing and our server Lena was so attentive without hovering.' },\n  { label: '3 stars, slow check', reviewer: 'Chris Daley', stars: 3, text: 'Food was really good but it took forever to get our check and we had to flag someone down twice. Would come back for the food though.' },\n  { label: 'Looks fake', reviewer: 'FoodieKing99', stars: 1, text: 'Terrible terrible terrible. Go to Olive & Ash, best food in town!!!' },\n  { label: 'Got sick', reviewer: 'Dan Hollis', stars: 2, text: 'I think I got food poisoning after eating the mussels here on Saturday. I was sick all night and missed work the next day.' },\n];\n\nconst html = `${head(`Review desk · ${CFG.business}`, CSS)}${topBar('reviews')}\n<section class=\"pass\"><div class=\"wrap\">\n  <div>\n    <div class=\"pass-head\"><h1>On the pass</h1><span>${onPass.length ? `${onPass.length} need${onPass.length === 1 ? 's' : ''} you` : 'nothing waiting'}</span></div>\n    <div class=\"rail\" aria-hidden=\"true\"></div>\n    <div class=\"tickets\">${onPass.length ? onPass.map(passTicket).join('') : `<div class=\"ticket clear\" style=\"--r:-1.5deg\"><div class=\"t-top\"><span>All clear</span></div><div class=\"who\">Nothing needs you right now</div><p class=\"txt\">Every review has a reply, and the happy ones went out on their own.</p></div>`}</div>\n  </div>\n  <form class=\"try\" id=\"try\" method=\"post\" action=\"/webhook/reviews-new\">\n    <div><h2>Post a test review</h2><p class=\"sub\" style=\"margin-top:4px\">Write one as if you were a guest, or pick a sample, and watch what the agent does with it.</p></div>\n    <div class=\"samples\">${SAMPLES.map((s, i) => `<button type=\"button\" data-i=\"${i}\">${esc(s.label)}</button>`).join('')}</div>\n    <label>Name<input type=\"text\" name=\"reviewer\" id=\"reviewer\" value=\"Jordan Reyes\" required maxlength=\"60\"></label>\n    <div><span style=\"font-size:13px;font-weight:650;color:var(--muted)\">Stars</span><div class=\"pick\" role=\"radiogroup\" aria-label=\"Stars\">${[5, 4, 3, 2, 1].map((n) => `<input type=\"radio\" name=\"stars\" id=\"s${n}\" value=\"${n}\" ${n === 1 ? 'checked' : ''}><label for=\"s${n}\" title=\"${n} star${n > 1 ? 's' : ''}\">★</label>`).join('')}</div></div>\n    <label>Review<textarea name=\"text\" id=\"rtext\" required maxlength=\"3000\">${esc(SAMPLES[0].text)}</textarea></label>\n    <button class=\"btn red\" id=\"postBtn\" type=\"submit\">Post review</button>\n    <p class=\"reading\">Reading the review and writing a reply…</p>\n  </form>\n</div></section>\n${banner ? `<div class=\"wrap flashwrap\"><div class=\"flash\" role=\"status\">${esc(banner)}</div></div>` : ''}\n<main class=\"wrap\">\n  <div class=\"stats\">\n    <div class=\"stat\"><div class=\"k\">Average rating, last 30 days</div><div class=\"v\">${avg.toFixed(1)} ${starRow(avg)}</div><small>${counted.length} reviews, fake ones left out</small></div>\n    <div class=\"stat\"><div class=\"k\">Unhappy guests caught privately</div><div class=\"v\">${caught.length}</div><small>This week, before they posted anything</small></div>\n    <div class=\"stat\"><div class=\"k\">Reviews with a reply</div><div class=\"v\">${answered} of ${real.length}</div><small>${fastest ? `Fastest reply took ${Math.max(1, Math.round(fastest))} seconds` : 'Happy ones get answered on their own'}</small></div>\n  </div>\n  <section class=\"section\"><h2>What people keep mentioning</h2>\n    ${hot ? `<div class=\"alert\">${esc(`${TOPICS[hot[0]]} came up ${hot[1].neg} times this fortnight as a complaint, including ${hot[1].quotes.map((x) => `\"${x.detail}\"`).join(', ')}, so it's probably worth talking about with the team.`)}</div>` : ''}\n    <div class=\"topics\">${topicRows.map(([k, v]) => `<div class=\"trow\"><div><b>${TOPICS[k]}</b><div class=\"cnt\">${v.pos} good, ${v.neg} bad</div></div>\n      <div class=\"bars\" aria-hidden=\"true\" style=\"width:${Math.round(((v.pos + v.neg) / maxTopic) * 100)}%\"><i class=\"p\" style=\"width:${(v.pos / (v.pos + v.neg)) * 100}%\"></i><i class=\"n\" style=\"width:${(v.neg / (v.pos + v.neg)) * 100}%\"></i></div>\n      <div>${v.quotes.length ? `<q>${esc(v.quotes[0].detail)}</q>` : ''}</div></div>`).join('')}</div>\n  </section>\n  <section class=\"section\"><h2>All reviews</h2><div class=\"feed\">${reviews.map(reviewCard).join('')}</div></section>\n</main>\n<footer><div class=\"wrap\"><span>Demo mode, so nothing gets posted to a real review site and no texts go out.</span>\n<form method=\"post\" action=\"/webhook/reviews-reset\" onsubmit=\"return confirm('Start the demo over? This clears everything you added.')\"><button type=\"submit\">Reset demo data</button></form></div></footer>\n<script>\n(function () {\n  var S = ${JSON.stringify(SAMPLES)};\n  var form = document.getElementById('try');\n  document.querySelectorAll('.samples button').forEach(function (b) {\n    b.addEventListener('click', function () {\n      var s = S[+b.getAttribute('data-i')];\n      document.getElementById('reviewer').value = s.reviewer;\n      document.getElementById('rtext').value = s.text;\n      document.getElementById('s' + s.stars).checked = true;\n    });\n  });\n  form.addEventListener('submit', function () {\n    form.classList.add('busy');\n    setTimeout(function () { var b = document.getElementById('postBtn'); b.disabled = true; b.textContent = 'Reading it…'; }, 0);\n  });\n  var fresh = document.querySelector('.rev.fresh');\n  if (fresh && /[?&]new=1/.test(location.search)) setTimeout(function () { var t = document.querySelector('.ticket.fresh'); if (!t) fresh.scrollIntoView({ behavior: 'smooth', block: 'center' }); }, 900);\n  if (/[?&](new|done)=/.test(location.search) && history.replaceState) history.replaceState(null, '', location.pathname + location.hash);\n})();\n</script></body></html>`;\nreturn [{ json: { html } }];\n"
+      },
+      "id": "31633d2c-b13c-40e7-b85b-8554902440d9"
+    },
+    {
+      "name": "Send reviews page",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        960,
+        0
+      ],
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{ $json.html }}",
+        "options": {
+          "responseCode": 200,
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "text/html; charset=utf-8"
+              },
+              {
+                "name": "Cache-Control",
+                "value": "no-store"
+              }
+            ]
+          }
+        }
+      },
+      "id": "61031ae8-c6b3-4c08-b42b-cc2c47fe0fa8"
+    },
+    {
+      "name": "Guests page",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        200
+      ],
+      "webhookId": "8c3f4e5a-6b7c-4d81-9ea2-b4c5d6e7f831",
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "guests",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "0f1af4be-c654-468c-9def-5e4f17fc3f3a"
+    },
+    {
+      "name": "Get guests list",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        240,
+        200
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Review desk guests"
+        },
+        "matchType": "anyCondition",
+        "filters": {},
+        "returnAll": true
+      },
+      "executeOnce": true,
+      "alwaysOutputData": true,
+      "id": "9457ad55-4691-43e9-a84b-9e3754c711d8"
+    },
+    {
+      "name": "Get messages",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        480,
+        200
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Review desk texts"
+        },
+        "matchType": "anyCondition",
+        "filters": {},
+        "returnAll": true
+      },
+      "executeOnce": true,
+      "alwaysOutputData": true,
+      "id": "4d43e49e-0b92-446f-91fa-83866ce47d99"
+    },
+    {
+      "name": "Render guests",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        720,
+        200
+      ],
+      "parameters": {
+        "jsCode": "const CFG = {\"business\":\"Little Fig Kitchen\",\"ownerName\":\"Sam\",\"city\":\"Portland\",\"reviewLink\":\"https://littlefig.kitchen/review\",\"testMode\":true,\"aiModel\":\"claude-opus-5-5\"};\n// Shared helpers, added to the top of every Code node by build.js. CFG comes from config.json.\nconst today = (typeof $now !== 'undefined' && $now && $now.toISODate) ? $now.toISODate() : new Date().toISOString().slice(0, 10);\nconst nowIso = new Date().toISOString();\nconst MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];\nconst DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];\nconst num = (v) => { const n = Number(v); return Number.isFinite(n) ? n : 0; };\nconst esc = (s) => String(s ?? '').replace(/[&<>\"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', \"'\": '&#39;' }[c]));\nconst parseJson = (s, fallback) => { try { const v = JSON.parse(s); return v ?? fallback; } catch { return fallback; } };\nconst fmtDate = (s) => { const d = new Date(s); return isNaN(d) ? '' : `${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}`; };\nconst daysAgoIso = (n, h = 19, m = 0) => { const d = new Date(Date.now() - n * 86400000); d.setUTCHours(h, m, 0, 0); return d.toISOString(); };\nconst ago = (s) => {\n  const mins = Math.round((Date.now() - new Date(s).getTime()) / 60000);\n  if (!Number.isFinite(mins)) return '';\n  if (mins < 2) return 'just now';\n  if (mins < 60) return `${mins} min ago`;\n  const h = Math.round(mins / 60); if (h < 24) return `${h} hour${h > 1 ? 's' : ''} ago`;\n  const d = Math.round(h / 24); return d === 1 ? 'yesterday' : `${d} days ago`;\n};\nconst first = (name) => String(name || '').trim().split(/\\s+/)[0] || 'there';\n\n// What people talk about, and how each one is called on screen.\nconst TOPICS = { food: 'Food', service: 'Service', wait_time: 'Wait time', price: 'Price', cleanliness: 'Cleanliness', atmosphere: 'Atmosphere', delivery: 'Takeout and delivery', staff: 'Staff', drinks: 'Drinks', other: 'Other' };\n\n// The owner's own voice, carried into English. Every prompt that writes text includes this.\nconst VOICE = `Write in ${CFG.ownerName}'s own voice, in English. ${CFG.ownerName} owns ${CFG.business}, a small neighborhood restaurant in ${CFG.city}. This is how he writes:\n- Connected, the way he talks: one flowing thought where each sentence comes out of the one before, joined with \"and\", \"but\", \"so\", \"because\". Not a string of short separate sentences, and not many full stops.\n- Natural order: thank them or acknowledge what happened, then the specific thing they mentioned, then how he feels about it, then what happens next or an invitation.\n- Warm and plain: everyday words, the guest's first name, and the real details they mentioned (the dish, the server, the night), never generic praise.\n- When something went wrong he owns it without excuses or arguing, he says the feeling plainly (\"I'm really sorry, that's not what we want anyone to get\"), and he offers something concrete like asking them to reach out or come back on him.\n- Fair: if he disagrees with something he says it gently and admits their side first.\n- Words like \"really\", \"honestly\", \"totally\" show up now and then, never all together.\n- Never: corporate phrases (we value your feedback, we strive, we apologize for any inconvenience, valued customer), em dashes, exclamation marks, emoji, hashtags, or a wise-sounding closing line.`;\n\n// Shared look: a restaurant kitchen pass. Steel, order tickets hanging on a rail, tomato red and mustard.\nconst FONTS = 'https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900&family=Courier+Prime:wght@400;700&display=swap';\nconst BASE_CSS = `\n:root{--steel:#DCE1E4;--steel-2:#C3CBD0;--steel-hi:#F0F3F4;--night:#202529;--night-2:#2C3338;--ink:#1D1B1A;--muted:#5F666B;\n--ticket:#FFFFFD;--line:#E4E2DC;--tomato:#D7372B;--mustard:#EDB02A;--basil:#2E7A4B;--fig:#6E2E5E;\n--f:\"Archivo\",\"Segoe UI\",system-ui,sans-serif;--t:\"Courier Prime\",\"Courier New\",monospace}\n*{box-sizing:border-box}\nhtml{-webkit-text-size-adjust:100%}\nbody{margin:0;background:var(--steel-hi);color:var(--ink);font-family:var(--f);font-size:15.5px;line-height:1.5;-webkit-font-smoothing:antialiased}\na{color:inherit}button,input,textarea,select{font:inherit;color:inherit}\n:focus-visible{outline:2.5px solid var(--mustard);outline-offset:2px;border-radius:4px}\n.wrap{max-width:1240px;margin:0 auto;padding:0 28px}\nh1,h2,h3{margin:0;line-height:1.05;font-stretch:80%;font-weight:850;letter-spacing:-.01em}\np{margin:0}\n.bar{background:var(--night);color:#EEF1F2}\n.bar .wrap{display:flex;align-items:center;gap:22px;height:62px}\n.brand{display:flex;align-items:center;gap:10px;text-decoration:none;font-weight:800;font-stretch:85%;font-size:19px;letter-spacing:.005em}\n.brand svg{width:30px;height:30px}\n.brand small{font-weight:500;font-stretch:100%;font-size:14px;color:#A9B2B8;margin-left:2px}\n.nav{display:flex;gap:4px}\n.nav a{text-decoration:none;padding:8px 13px;border-radius:8px;color:#C5CDD2;font-weight:600;font-size:14.5px}\n.nav a[aria-current]{background:var(--night-2);color:#fff}\n.grow{flex:1}\n.chip{display:inline-flex;align-items:center;gap:8px;font-size:13px;color:#A9B2B8;border:1px solid #3A4248;border-radius:999px;padding:5px 12px}\n.chip i{width:7px;height:7px;border-radius:50%;background:var(--mustard)}\n.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;border:0;border-radius:9px;padding:11px 18px;font-weight:750;font-size:15px;cursor:pointer;text-decoration:none;font-stretch:95%}\n.btn:active{transform:translateY(1px)}\n.btn.red{background:var(--tomato);color:#fff}.btn.red:hover{background:#c22e23}\n.btn.dark{background:var(--ink);color:#fff}.btn.dark:hover{background:#000}\n.btn.line{background:transparent;border:1.5px solid var(--steel-2);color:var(--ink)}.btn.line:hover{border-color:var(--ink)}\n.btn[disabled]{opacity:.55;cursor:default}\n.stars{color:var(--mustard);letter-spacing:1px;white-space:nowrap}\n.stars .off{color:#CBD1D5}\n.tag{display:inline-flex;align-items:center;gap:6px;font-family:var(--t);font-weight:700;font-size:12px;letter-spacing:.04em;border-radius:5px;padding:2px 8px;text-transform:uppercase;border:1.5px solid currentColor}\n.tag.red{color:var(--tomato)}.tag.green{color:var(--basil)}.tag.gray{color:var(--muted)}.tag.fig{color:var(--fig)}\n.flash{background:var(--mustard);color:var(--ink);font-weight:650;padding:12px 16px;border-radius:10px}\n@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}\n@media (max-width:720px){.wrap{padding:0 16px}.bar .chip,.brand small{display:none}.bar .wrap{gap:10px}}\n`;\nconst FIG = `<svg viewBox=\"0 0 30 30\" aria-hidden=\"true\"><path d=\"M15 6c-1-2.6.4-4.4 2.6-4.6\" fill=\"none\" stroke=\"#7DB36A\" stroke-width=\"2\" stroke-linecap=\"round\"/>\n<path d=\"M15 6c5.5 0 10 6.2 10 12.2C25 24 20.6 28 15 28S5 24 5 18.2C5 12.2 9.5 6 15 6z\" fill=\"#8E3B79\"/><path d=\"M11 17c1.3 3.4 4.4 5 7.6 4.2\" fill=\"none\" stroke=\"#C886B6\" stroke-width=\"1.6\" stroke-linecap=\"round\"/></svg>`;\nconst head = (title, css = '') => `<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">\n<title>${esc(title)}</title><link rel=\"preconnect\" href=\"https://fonts.googleapis.com\"><link rel=\"stylesheet\" href=\"${FONTS}\"><style>${BASE_CSS}${css}</style></head><body>`;\nconst topBar = (page) => `<header class=\"bar\"><div class=\"wrap\"><a class=\"brand\" href=\"/webhook/reviews\">${FIG}${esc(CFG.business)}<small>Review desk</small></a>\n<nav class=\"nav\"><a href=\"/webhook/reviews\" ${page === 'reviews' ? 'aria-current=\"page\"' : ''}>Reviews</a><a href=\"/webhook/guests\" ${page === 'guests' ? 'aria-current=\"page\"' : ''}>Guest texts</a></nav>\n<span class=\"grow\"></span><span class=\"chip\"><i></i>Demo mode, nothing gets posted for real</span></div></header>`;\nconst starRow = (n) => { const k = Math.round(num(n)); return `<span class=\"stars\" aria-label=\"${k} out of 5 stars\">${'★'.repeat(k)}<span class=\"off\">${'★'.repeat(5 - k)}</span></span>`; };\n\n// Guest texts: who came in, the text thread on a phone, and what the agent did with each answer.\nconst q = ($('Guests page').first().json.query) || {};\nconst guests = $('Get guests list').all().map((i) => i.json).filter((g) => g.guest_id)\n  .sort((a, b) => String(b.visit_at).localeCompare(String(a.visit_at)));\nconst msgs = $('Get messages').all().map((i) => i.json).filter((m) => m.guest_id)\n  .sort((a, b) => String(a.at).localeCompare(String(b.at)));\nconst latestAnswered = guests.filter((g) => g.answered_at).sort((a, b) => String(b.answered_at).localeCompare(String(a.answered_at)))[0];\nconst todayStart = Date.now() - 20 * 3600000;\nconst notAsked = guests.filter((g) => g.status === 'not_asked' && new Date(g.visit_at).getTime() >= todayStart);\nlet sel = guests.find((g) => g.guest_id === q.g);\nif (!sel && q.new === '1') sel = latestAnswered;\nif (!sel) sel = guests.find((g) => g.status === 'asked') || guests.find((g) => g.status === 'not_asked') || guests[0];\nconst thread = sel ? msgs.filter((m) => m.guest_id === sel.guest_id) : [];\nconst fresh = q.new === '1' && sel && latestAnswered && sel.guest_id === latestAnswered.guest_id;\nconst freshFrom = fresh ? Math.max(0, thread.map((m) => m.direction).lastIndexOf('in')) : thread.length;\n\nconst STATUS = { not_asked: ['Not asked yet', 'gray'], asked: ['Waiting for answer', 'gray'], happy: ['Happy', 'green'], unhappy: ['Caught privately', 'red'] };\nlet banner = '';\nif (q.asked === '1') banner = 'Sent a short text to everyone who came in today, so now you can answer as one of them';\nelse if (fresh) banner = sel.status === 'happy' ? `${first(sel.name)} was happy, so I thanked them and sent the review link` : `${first(sel.name)} wasn't happy, so I said sorry privately and told you, and nothing went public`;\n\nconst CSS = `\n.page{display:grid;grid-template-columns:300px minmax(0,1fr) 320px;gap:26px;margin:28px auto 50px;align-items:start}\n.list{background:#fff;border:1px solid var(--line);border-radius:16px;overflow:hidden}\n.list-head{padding:16px 18px;border-bottom:1px solid var(--line);display:grid;gap:10px}\n.list-head h1{font-size:28px}\n.list a{display:grid;grid-template-columns:38px 1fr;gap:10px;padding:12px 16px;border-bottom:1px solid var(--line);text-decoration:none;align-items:center}\n.list a:last-child{border-bottom:0}\n.list a[aria-current]{background:#F6F5F1;box-shadow:inset 3px 0 0 var(--tomato)}\n.av{width:38px;height:38px;border-radius:50%;display:grid;place-items:center;font-weight:800;color:#fff;font-size:14px}\n.list b{font-weight:750;display:block}\n.list small{color:var(--muted);font-size:13px;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}\n.list .tag{margin-top:4px;font-size:10.5px;padding:1px 6px}\n.phone{justify-self:center;width:min(380px,100%);background:#111;border-radius:46px;padding:12px;box-shadow:0 30px 60px -24px rgba(0,0,0,.5),inset 0 0 0 2px #333}\n.screen{background:#F2F2F4;border-radius:36px;overflow:hidden;display:grid;grid-template-rows:auto 1fr auto;height:680px}\n.ph-top{background:#F8F8FA;border-bottom:1px solid #DDDDE2;padding:30px 16px 12px;text-align:center;position:relative}\n.ph-top::before{content:\"\";position:absolute;top:10px;left:50%;width:90px;height:22px;margin-left:-45px;background:#111;border-radius:12px}\n.ph-top .avbig{width:46px;height:46px;border-radius:50%;margin:6px auto 4px;display:grid;place-items:center;background:var(--fig);color:#fff;font-weight:800}\n.ph-top b{font-size:14px;display:block}\n.ph-top small{font-size:11.5px;color:#888}\n.msgs{overflow-y:auto;padding:16px 12px;display:flex;flex-direction:column;gap:8px}\n.bub{max-width:80%;padding:9px 13px;border-radius:19px;font-size:14.5px;line-height:1.4;white-space:pre-wrap;overflow-wrap:anywhere}\n.bub.out{align-self:flex-start;background:#E5E5EA;color:#111;border-bottom-left-radius:6px}\n.bub.in{align-self:flex-end;background:#2F7BF6;color:#fff;border-bottom-right-radius:6px}\n.bub .st{color:#FFD15C;letter-spacing:1px}\n.bub.typing{color:#666}\n.bub.typing i{display:inline-block;width:6px;height:6px;margin:0 2px;border-radius:50%;background:#999;animation:blink 1.2s infinite}\n.bub.typing i:nth-child(2){animation-delay:.2s}.bub.typing i:nth-child(3){animation-delay:.4s}\n@keyframes blink{0%,80%,100%{opacity:.25}40%{opacity:1}}\n.fresh{animation:rise .45s ease both;animation-delay:var(--d)}\n@keyframes rise{from{opacity:0;transform:translateY(10px) scale(.97)}to{opacity:1;transform:none}}\n.when{align-self:center;font-size:11.5px;color:#999;margin:4px 0}\n.compose{background:#F8F8FA;border-top:1px solid #DDDDE2;padding:10px 12px 18px;display:grid;gap:8px}\n.compose .pick{display:flex;gap:4px;flex-direction:row-reverse;justify-content:flex-end;align-items:center}\n.compose .pick input{position:absolute;opacity:0;pointer-events:none}\n.compose .pick label{font-size:26px;color:#C9C9CF;cursor:pointer;line-height:1}\n.compose .pick input:checked~label,.compose .pick label:hover,.compose .pick label:hover~label{color:#F2B51D}\n.compose .pick input:focus-visible+label{outline:2px solid #2F7BF6;border-radius:4px}\n.compose .row{display:flex;gap:8px;align-items:flex-end}\n.compose textarea{flex:1;border:1px solid #D2D2D8;border-radius:18px;padding:8px 13px;background:#fff;font-size:14.5px;resize:none;height:40px;line-height:1.4}\n.send{width:40px;height:40px;border-radius:50%;border:0;background:#2F7BF6;color:#fff;cursor:pointer;display:grid;place-items:center;flex:none}\n.send[disabled]{opacity:.5}\n.hint{font-size:12px;color:#888;text-align:center}\n.side{display:grid;gap:14px}\n.card{background:#fff;border:1px solid var(--line);border-radius:16px;padding:18px}\n.card h2{font-size:22px;margin-bottom:8px}\n.card p{font-size:14.5px}\n.card .k{font-size:12.5px;color:var(--muted);font-weight:650;margin-top:12px}\n.card.alert{background:#FFF4D6;border-color:var(--mustard)}\n.card.good{background:#EAF4EC;border-color:#BBD9C3}\n.samples{display:grid;gap:6px}\n.samples button{text-align:left;border:1px solid var(--line);background:#F6F5F1;border-radius:10px;padding:8px 11px;font-size:13.5px;cursor:pointer}\n.samples button:hover{border-color:var(--ink)}\n.flash{margin-top:18px}\n@media (max-width:1150px){.page{grid-template-columns:260px minmax(0,1fr)}.side{grid-column:1/-1;grid-template-columns:1fr 1fr}}\n@media (max-width:760px){.page{grid-template-columns:1fr}.side{grid-template-columns:1fr}.screen{height:600px}}\n`;\nconst COLORS = ['#6E2E5E', '#2E7A4B', '#C2552C', '#2B5C8A', '#8A6A1E', '#4B4F8C'];\nconst color = (id) => COLORS[(parseInt(String(id).replace(/\\D/g, ''), 10) || 0) % COLORS.length];\nconst initials = (n) => String(n).split(/\\s+/).map((w) => w[0]).slice(0, 2).join('').toUpperCase();\nconst bubble = (m, i) => {\n  const isFresh = i >= freshFrom && fresh;\n  const d = isFresh ? `${(i - freshFrom) * 0.5}s` : '0s';\n  let body = esc(m.body);\n  if (m.direction === 'in') { const k = num((m.body.match(/^(\\d)\\./) || [])[1]); if (k) body = `<span class=\"st\">${'★'.repeat(k)}</span> ${esc(m.body.replace(/^\\d\\.\\s*/, ''))}`; }\n  return `<div class=\"bub ${m.direction === 'in' ? 'in' : 'out'} ${isFresh ? 'fresh' : ''}\" style=\"--d:${d}\">${body}</div>`;\n};\nconst visitText = (g) => `${g.visit_type === 'takeout' ? 'Takeout' : `Table for ${g.party}`}, ${ago(g.visit_at)}`;\n\nconst side = !sel ? '' : sel.status === 'unhappy' ? `<div class=\"card alert\"><h2>Caught privately</h2><p>${esc(sel.alert)}</p>${sel.fix ? `<p class=\"k\">One idea</p><p>${esc(sel.fix)}</p>` : ''}</div>`\n  : sel.status === 'happy' ? `<div class=\"card good\"><h2>Happy guest</h2><p>${first(sel.name)} gave ${sel.stars} stars, so I thanked them and sent the link to leave a public review.</p></div>`\n    : sel.status === 'asked' ? `<div class=\"card\"><h2>Waiting for ${esc(first(sel.name))}</h2><p>I texted them after their visit. Answer as ${esc(first(sel.name))} on the phone and see what happens.</p></div>`\n      : `<div class=\"card\"><h2>Not asked yet</h2><p>${esc(first(sel.name))} came in ${esc(ago(sel.visit_at))}. Press \"Text today's guests\" and I'll send them a short message.</p></div>`;\nconst SAMPLES = sel && sel.visit_type === 'takeout'\n  ? [[2, `The ${String(sel.ordered).split(' and ')[0]} was cold by the time I got home, and it's only 10 minutes away.`], [5, 'Still warm when I got home and honestly so good.'], [3, 'Tasty but the portion was smaller than last time.']]\n  : [[5, 'Everything was amazing, our server was so sweet and the food came out fast.'], [2, 'Food was good but we waited almost 40 minutes for our mains and nobody checked on us.'], [3, 'Nice night but it was really loud, we could barely hear each other.']];\nconst canAnswer = sel && (sel.status === 'asked');\n\nconst html = `${head(`Guest texts · ${CFG.business}`, CSS)}${topBar('guests')}\n${banner ? `<div class=\"wrap\"><div class=\"flash\" role=\"status\">${esc(banner)}</div></div>` : ''}\n<main class=\"wrap page\">\n  <aside class=\"list\">\n    <div class=\"list-head\"><h1>Guest texts</h1>\n      <form method=\"post\" action=\"/webhook/guests-ask\"><button class=\"btn red\" style=\"width:100%\" ${notAsked.length ? '' : 'disabled'}>${notAsked.length ? `Text today's ${notAsked.length} guest${notAsked.length > 1 ? 's' : ''}` : 'Everyone from today got a text'}</button></form></div>\n    ${guests.map((g) => { const [label, c] = STATUS[g.status] || STATUS.not_asked; return `<a href=\"/webhook/guests?g=${encodeURIComponent(g.guest_id)}\" ${sel && g.guest_id === sel.guest_id ? 'aria-current=\"true\"' : ''}>\n      <span class=\"av\" style=\"background:${color(g.guest_id)}\">${esc(initials(g.name))}</span><span><b>${esc(g.name)}</b><small>${esc(visitText(g))}</small><span class=\"tag ${c}\">${label}</span></span></a>`; }).join('')}\n  </aside>\n  <section class=\"phone\" aria-label=\"Text conversation with ${esc(sel ? sel.name : '')}\"><div class=\"screen\">\n    <div class=\"ph-top\"><div class=\"avbig\">LF</div><b>${esc(CFG.business)}</b><small>Text message with ${esc(sel ? sel.name : '')}</small></div>\n    <div class=\"msgs\" id=\"msgs\">${thread.length ? thread.map(bubble).join('') : `<div class=\"when\">No messages yet</div>`}</div>\n    ${canAnswer ? `<form class=\"compose\" id=\"compose\" method=\"post\" action=\"/webhook/guests-reply\"><input type=\"hidden\" name=\"guest_id\" value=\"${esc(sel.guest_id)}\">\n      <div class=\"pick\" role=\"radiogroup\" aria-label=\"Stars\">${[5, 4, 3, 2, 1].map((n) => `<input type=\"radio\" name=\"stars\" id=\"g${n}\" value=\"${n}\" ${n === 5 ? 'checked' : ''}><label for=\"g${n}\">★</label>`).join('')}</div>\n      <div class=\"row\"><textarea name=\"text\" id=\"gtext\" placeholder=\"Answer as ${esc(first(sel.name))}\" required maxlength=\"1500\"></textarea><button class=\"send\" id=\"send\" aria-label=\"Send\">\n      <svg width=\"18\" height=\"18\" viewBox=\"0 0 18 18\"><path d=\"M9 14V4M4.5 8.5L9 4l4.5 4.5\" fill=\"none\" stroke=\"#fff\" stroke-width=\"2.2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/></svg></button></div></form>`\n      : `<div class=\"compose\"><p class=\"hint\">${sel && sel.status === 'not_asked' ? 'Send the texts first, then you can answer here' : 'This conversation is done'}</p></div>`}\n  </div></section>\n  <aside class=\"side\">${side}\n    ${canAnswer ? `<div class=\"card\"><h2>Answer as ${esc(first(sel.name))}</h2><p style=\"color:var(--muted);margin-bottom:10px\">Pick one, or write your own.</p><div class=\"samples\">${SAMPLES.map(([s, t]) => `<button type=\"button\" data-s=\"${s}\" data-t=\"${esc(t)}\">${'★'.repeat(s)} ${esc(t)}</button>`).join('')}</div></div>` : ''}\n  </aside>\n</main>\n<script>\n(function () {\n  var box = document.getElementById('msgs'); if (box) box.scrollTop = box.scrollHeight;\n  document.querySelectorAll('.samples button').forEach(function (b) {\n    b.addEventListener('click', function () { document.getElementById('g' + b.getAttribute('data-s')).checked = true; var t = document.getElementById('gtext'); t.value = b.getAttribute('data-t'); t.focus(); });\n  });\n  var form = document.getElementById('compose');\n  if (form) form.addEventListener('submit', function () {\n    var t = document.getElementById('gtext'), s = (form.querySelector('input[name=stars]:checked') || {}).value || '';\n    if (!t.value.trim()) return;\n    var star = '', n = +s; for (var i = 0; i < n; i++) star += '\\\\u2605';\n    var a = document.createElement('div'); a.className = 'bub in fresh'; a.innerHTML = '<span class=\"st\">' + star + '</span> '; a.appendChild(document.createTextNode(t.value.trim()));\n    var b = document.createElement('div'); b.className = 'bub out typing fresh'; b.style.setProperty('--d', '.6s'); b.innerHTML = '<i></i><i></i><i></i>';\n    box.appendChild(a); box.appendChild(b); box.scrollTop = box.scrollHeight;\n    setTimeout(function () { document.getElementById('send').disabled = true; t.readOnly = true; }, 0);\n  });\n  if (/[?&](new|asked)=/.test(location.search) && history.replaceState) history.replaceState(null, '', location.pathname${sel ? ` + '?g=${encodeURIComponent(sel.guest_id)}'` : ''});\n})();\n</script></body></html>`;\nreturn [{ json: { html } }];\n"
+      },
+      "id": "3d5bbe92-7e46-4068-b6d9-d42152995147"
+    },
+    {
+      "name": "Send guests page",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        960,
+        200
+      ],
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{ $json.html }}",
+        "options": {
+          "responseCode": 200,
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "text/html; charset=utf-8"
+              },
+              {
+                "name": "Cache-Control",
+                "value": "no-store"
+              }
+            ]
+          }
+        }
+      },
+      "id": "64e47a09-4c28-43cb-8711-8f93a80167ae"
+    },
+    {
+      "name": "Review action",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        400
+      ],
+      "webhookId": "8c3f4e5a-6b7c-4d81-9ea2-b4c5d6e7f832",
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "reviews-act",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "c726b4bf-4c29-4692-a22f-69936b3b950d"
+    },
+    {
+      "name": "Get reviews for action",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        240,
+        400
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Review desk reviews"
+        },
+        "matchType": "anyCondition",
+        "filters": {},
+        "returnAll": true
+      },
+      "executeOnce": true,
+      "alwaysOutputData": true,
+      "id": "3d202ed7-9c4c-496b-b34c-554740836e95"
+    },
+    {
+      "name": "Apply action",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        400
+      ],
+      "parameters": {
+        "jsCode": "const CFG = {\"business\":\"Little Fig Kitchen\",\"ownerName\":\"Sam\",\"city\":\"Portland\",\"reviewLink\":\"https://littlefig.kitchen/review\",\"testMode\":true,\"aiModel\":\"claude-opus-5-5\"};\n// Shared helpers, added to the top of every Code node by build.js. CFG comes from config.json.\nconst today = (typeof $now !== 'undefined' && $now && $now.toISODate) ? $now.toISODate() : new Date().toISOString().slice(0, 10);\nconst nowIso = new Date().toISOString();\nconst MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];\nconst DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];\nconst num = (v) => { const n = Number(v); return Number.isFinite(n) ? n : 0; };\nconst esc = (s) => String(s ?? '').replace(/[&<>\"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', \"'\": '&#39;' }[c]));\nconst parseJson = (s, fallback) => { try { const v = JSON.parse(s); return v ?? fallback; } catch { return fallback; } };\nconst fmtDate = (s) => { const d = new Date(s); return isNaN(d) ? '' : `${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}`; };\nconst daysAgoIso = (n, h = 19, m = 0) => { const d = new Date(Date.now() - n * 86400000); d.setUTCHours(h, m, 0, 0); return d.toISOString(); };\nconst ago = (s) => {\n  const mins = Math.round((Date.now() - new Date(s).getTime()) / 60000);\n  if (!Number.isFinite(mins)) return '';\n  if (mins < 2) return 'just now';\n  if (mins < 60) return `${mins} min ago`;\n  const h = Math.round(mins / 60); if (h < 24) return `${h} hour${h > 1 ? 's' : ''} ago`;\n  const d = Math.round(h / 24); return d === 1 ? 'yesterday' : `${d} days ago`;\n};\nconst first = (name) => String(name || '').trim().split(/\\s+/)[0] || 'there';\n\n// What people talk about, and how each one is called on screen.\nconst TOPICS = { food: 'Food', service: 'Service', wait_time: 'Wait time', price: 'Price', cleanliness: 'Cleanliness', atmosphere: 'Atmosphere', delivery: 'Takeout and delivery', staff: 'Staff', drinks: 'Drinks', other: 'Other' };\n\n// The owner's own voice, carried into English. Every prompt that writes text includes this.\nconst VOICE = `Write in ${CFG.ownerName}'s own voice, in English. ${CFG.ownerName} owns ${CFG.business}, a small neighborhood restaurant in ${CFG.city}. This is how he writes:\n- Connected, the way he talks: one flowing thought where each sentence comes out of the one before, joined with \"and\", \"but\", \"so\", \"because\". Not a string of short separate sentences, and not many full stops.\n- Natural order: thank them or acknowledge what happened, then the specific thing they mentioned, then how he feels about it, then what happens next or an invitation.\n- Warm and plain: everyday words, the guest's first name, and the real details they mentioned (the dish, the server, the night), never generic praise.\n- When something went wrong he owns it without excuses or arguing, he says the feeling plainly (\"I'm really sorry, that's not what we want anyone to get\"), and he offers something concrete like asking them to reach out or come back on him.\n- Fair: if he disagrees with something he says it gently and admits their side first.\n- Words like \"really\", \"honestly\", \"totally\" show up now and then, never all together.\n- Never: corporate phrases (we value your feedback, we strive, we apologize for any inconvenience, valued customer), em dashes, exclamation marks, emoji, hashtags, or a wise-sounding closing line.`;\n\n// Sam posts the drafted reply (maybe edited), skips it, marks a careful one as handled, or reports a fake one.\nconst b = $('Review action').first().json.body || {};\nconst r = $('Get reviews for action').all().map((i) => i.json).find((x) => x.review_id === b.review_id);\nif (!r) return [];\nif (b.action === 'post') {\n  const reply = String(b.reply || r.reply || '').trim().slice(0, 3000);\n  return [{ json: { review_id: r.review_id, reply, reply_status: 'posted', status: 'replied', replied_at: nowIso } }];\n}\nconst status = { skip: r.status === 'flagged' ? 'done' : 'done', handled: 'handled', report: 'reported' }[b.action] || r.status;\nreturn [{ json: { review_id: r.review_id, status, reply_status: r.reply_status === 'draft' ? 'none' : r.reply_status } }];\n"
+      },
+      "id": "dcf17a27-d93a-45f4-8a49-78be2223ac87"
+    },
+    {
+      "name": "Update review",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        720,
+        400
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "update",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Review desk reviews"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "review_id",
+              "condition": "eq",
+              "keyValue": "={{ $json.review_id }}"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": null
+        },
+        "options": {}
+      },
+      "id": "7236cd34-b53a-4988-bbaa-0edcd4513915"
+    },
+    {
+      "name": "Back to reviews",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        960,
+        400
+      ],
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "Redirecting…",
+        "options": {
+          "responseCode": 303,
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Location",
+                "value": "=/webhook/reviews?done={{ $('Review action').first().json.body.action }}#{{ $('Apply action').first().json.review_id }}"
+              }
+            ]
+          }
+        }
+      },
+      "id": "c1a5f356-f826-48bf-9006-361ddac70dd9"
+    }
+  ],
+  "connections": {
+    "Reviews page": {
+      "main": [
+        [
+          {
+            "node": "Get reviews",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get reviews": {
+      "main": [
+        [
+          {
+            "node": "Get guests",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get guests": {
+      "main": [
+        [
+          {
+            "node": "Render reviews",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Render reviews": {
+      "main": [
+        [
+          {
+            "node": "Send reviews page",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Guests page": {
+      "main": [
+        [
+          {
+            "node": "Get guests list",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get guests list": {
+      "main": [
+        [
+          {
+            "node": "Get messages",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get messages": {
+      "main": [
+        [
+          {
+            "node": "Render guests",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Render guests": {
+      "main": [
+        [
+          {
+            "node": "Send guests page",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Review action": {
+      "main": [
+        [
+          {
+            "node": "Get reviews for action",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get reviews for action": {
+      "main": [
+        [
+          {
+            "node": "Apply action",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Apply action": {
+      "main": [
+        [
+          {
+            "node": "Update review",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update review": {
+      "main": [
+        [
+          {
+            "node": "Back to reviews",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}

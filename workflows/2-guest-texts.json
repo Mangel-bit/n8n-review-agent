@@ -1,0 +1,594 @@
+{
+  "id": "reviewDeskText01",
+  "name": "Review Agent · 2 Guest texts",
+  "active": false,
+  "nodes": [
+    {
+      "name": "Text today's guests",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        0
+      ],
+      "webhookId": "8c3f4e5a-6b7c-4d81-9ea2-b4c5d6e7f820",
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "guests-ask",
+        "responseMode": "lastNode",
+        "options": {
+          "responseCode": {
+            "values": {
+              "responseCode": "customCode",
+              "customCode": 303
+            }
+          },
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Location",
+                "value": "/webhook/guests?asked=1"
+              }
+            ]
+          }
+        },
+        "responseData": "noData"
+      },
+      "id": "8eed3667-f7e9-44b4-b07b-2bf19f20fa44"
+    },
+    {
+      "name": "Get guests",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        240,
+        0
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Review desk guests"
+        },
+        "matchType": "anyCondition",
+        "filters": {},
+        "returnAll": true
+      },
+      "executeOnce": true,
+      "alwaysOutputData": true,
+      "id": "90c461ff-07ce-442d-b70b-738094fecfe9"
+    },
+    {
+      "name": "Feedback texts",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const CFG = {\"business\":\"Little Fig Kitchen\",\"ownerName\":\"Sam\",\"city\":\"Portland\",\"reviewLink\":\"https://littlefig.kitchen/review\",\"testMode\":true,\"aiModel\":\"claude-opus-5-5\"};\n// Shared helpers, added to the top of every Code node by build.js. CFG comes from config.json.\nconst today = (typeof $now !== 'undefined' && $now && $now.toISODate) ? $now.toISODate() : new Date().toISOString().slice(0, 10);\nconst nowIso = new Date().toISOString();\nconst MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];\nconst DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];\nconst num = (v) => { const n = Number(v); return Number.isFinite(n) ? n : 0; };\nconst esc = (s) => String(s ?? '').replace(/[&<>\"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', \"'\": '&#39;' }[c]));\nconst parseJson = (s, fallback) => { try { const v = JSON.parse(s); return v ?? fallback; } catch { return fallback; } };\nconst fmtDate = (s) => { const d = new Date(s); return isNaN(d) ? '' : `${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}`; };\nconst daysAgoIso = (n, h = 19, m = 0) => { const d = new Date(Date.now() - n * 86400000); d.setUTCHours(h, m, 0, 0); return d.toISOString(); };\nconst ago = (s) => {\n  const mins = Math.round((Date.now() - new Date(s).getTime()) / 60000);\n  if (!Number.isFinite(mins)) return '';\n  if (mins < 2) return 'just now';\n  if (mins < 60) return `${mins} min ago`;\n  const h = Math.round(mins / 60); if (h < 24) return `${h} hour${h > 1 ? 's' : ''} ago`;\n  const d = Math.round(h / 24); return d === 1 ? 'yesterday' : `${d} days ago`;\n};\nconst first = (name) => String(name || '').trim().split(/\\s+/)[0] || 'there';\n\n// What people talk about, and how each one is called on screen.\nconst TOPICS = { food: 'Food', service: 'Service', wait_time: 'Wait time', price: 'Price', cleanliness: 'Cleanliness', atmosphere: 'Atmosphere', delivery: 'Takeout and delivery', staff: 'Staff', drinks: 'Drinks', other: 'Other' };\n\n// The owner's own voice, carried into English. Every prompt that writes text includes this.\nconst VOICE = `Write in ${CFG.ownerName}'s own voice, in English. ${CFG.ownerName} owns ${CFG.business}, a small neighborhood restaurant in ${CFG.city}. This is how he writes:\n- Connected, the way he talks: one flowing thought where each sentence comes out of the one before, joined with \"and\", \"but\", \"so\", \"because\". Not a string of short separate sentences, and not many full stops.\n- Natural order: thank them or acknowledge what happened, then the specific thing they mentioned, then how he feels about it, then what happens next or an invitation.\n- Warm and plain: everyday words, the guest's first name, and the real details they mentioned (the dish, the server, the night), never generic praise.\n- When something went wrong he owns it without excuses or arguing, he says the feeling plainly (\"I'm really sorry, that's not what we want anyone to get\"), and he offers something concrete like asking them to reach out or come back on him.\n- Fair: if he disagrees with something he says it gently and admits their side first.\n- Words like \"really\", \"honestly\", \"totally\" show up now and then, never all together.\n- Never: corporate phrases (we value your feedback, we strive, we apologize for any inconvenience, valued customer), em dashes, exclamation marks, emoji, hashtags, or a wise-sounding closing line.`;\n\n// Texts everyone who came in today and hasn't been asked yet, in Sam's voice, mentioning what they had.\nconst todayStart = new Date(Date.now() - 20 * 3600000).getTime();\nconst toAsk = $('Get guests').all().map((i) => i.json)\n  .filter((g) => g.guest_id && g.status === 'not_asked' && new Date(g.visit_at).getTime() >= todayStart);\nreturn toAsk.map((g, i) => {\n  const at = new Date(Date.now() + i).toISOString();\n  const what = g.visit_type === 'takeout'\n    ? `thanks a lot for ordering with us tonight, and I hope the ${g.ordered} made it home hot`\n    : /birthday/i.test(g.ordered) ? 'thanks so much for celebrating with us tonight, and I really hope the birthday dinner felt special'\n      : `thanks so much for coming in tonight, and I hope the ${g.ordered} ${/ and /.test(g.ordered) ? 'were' : 'was'} as good as ${/ and /.test(g.ordered) ? 'they usually are' : 'it usually is'}`;\n  return { json: { guest_id: g.guest_id, direction: 'out', at,\n    body: `Hey ${first(g.name)}, it's ${CFG.ownerName} from Little Fig, ${what}. If you have a second, how was everything from 1 to 5? Just reply here, honestly any feedback really helps us.` } };\n});\n\n"
+      },
+      "id": "2a26ff13-0413-4920-85c0-63a47916b12b"
+    },
+    {
+      "name": "Save texts",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        720,
+        0
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "insert",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Review desk texts"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": null
+        },
+        "options": {}
+      },
+      "id": "11563336-3d5c-44ec-a81f-794b0ca88e4d"
+    },
+    {
+      "name": "Asked",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        960,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const CFG = {\"business\":\"Little Fig Kitchen\",\"ownerName\":\"Sam\",\"city\":\"Portland\",\"reviewLink\":\"https://littlefig.kitchen/review\",\"testMode\":true,\"aiModel\":\"claude-opus-5-5\"};\n// Shared helpers, added to the top of every Code node by build.js. CFG comes from config.json.\nconst today = (typeof $now !== 'undefined' && $now && $now.toISODate) ? $now.toISODate() : new Date().toISOString().slice(0, 10);\nconst nowIso = new Date().toISOString();\nconst MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];\nconst DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];\nconst num = (v) => { const n = Number(v); return Number.isFinite(n) ? n : 0; };\nconst esc = (s) => String(s ?? '').replace(/[&<>\"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', \"'\": '&#39;' }[c]));\nconst parseJson = (s, fallback) => { try { const v = JSON.parse(s); return v ?? fallback; } catch { return fallback; } };\nconst fmtDate = (s) => { const d = new Date(s); return isNaN(d) ? '' : `${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}`; };\nconst daysAgoIso = (n, h = 19, m = 0) => { const d = new Date(Date.now() - n * 86400000); d.setUTCHours(h, m, 0, 0); return d.toISOString(); };\nconst ago = (s) => {\n  const mins = Math.round((Date.now() - new Date(s).getTime()) / 60000);\n  if (!Number.isFinite(mins)) return '';\n  if (mins < 2) return 'just now';\n  if (mins < 60) return `${mins} min ago`;\n  const h = Math.round(mins / 60); if (h < 24) return `${h} hour${h > 1 ? 's' : ''} ago`;\n  const d = Math.round(h / 24); return d === 1 ? 'yesterday' : `${d} days ago`;\n};\nconst first = (name) => String(name || '').trim().split(/\\s+/)[0] || 'there';\n\n// What people talk about, and how each one is called on screen.\nconst TOPICS = { food: 'Food', service: 'Service', wait_time: 'Wait time', price: 'Price', cleanliness: 'Cleanliness', atmosphere: 'Atmosphere', delivery: 'Takeout and delivery', staff: 'Staff', drinks: 'Drinks', other: 'Other' };\n\n// The owner's own voice, carried into English. Every prompt that writes text includes this.\nconst VOICE = `Write in ${CFG.ownerName}'s own voice, in English. ${CFG.ownerName} owns ${CFG.business}, a small neighborhood restaurant in ${CFG.city}. This is how he writes:\n- Connected, the way he talks: one flowing thought where each sentence comes out of the one before, joined with \"and\", \"but\", \"so\", \"because\". Not a string of short separate sentences, and not many full stops.\n- Natural order: thank them or acknowledge what happened, then the specific thing they mentioned, then how he feels about it, then what happens next or an invitation.\n- Warm and plain: everyday words, the guest's first name, and the real details they mentioned (the dish, the server, the night), never generic praise.\n- When something went wrong he owns it without excuses or arguing, he says the feeling plainly (\"I'm really sorry, that's not what we want anyone to get\"), and he offers something concrete like asking them to reach out or come back on him.\n- Fair: if he disagrees with something he says it gently and admits their side first.\n- Words like \"really\", \"honestly\", \"totally\" show up now and then, never all together.\n- Never: corporate phrases (we value your feedback, we strive, we apologize for any inconvenience, valued customer), em dashes, exclamation marks, emoji, hashtags, or a wise-sounding closing line.`;\n\nreturn $('Feedback texts').all().map((i) => ({ json: { guest_id: i.json.guest_id, status: 'asked', asked_at: i.json.at } }));\n\n"
+      },
+      "id": "54fff6c6-e300-4866-bf45-07f85cbdb05c"
+    },
+    {
+      "name": "Update guests",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        1200,
+        0
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "update",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Review desk guests"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "guest_id",
+              "condition": "eq",
+              "keyValue": "={{ $json.guest_id }}"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": null
+        },
+        "options": {}
+      },
+      "id": "accf2a93-9510-4755-8507-dc3b682d559f"
+    },
+    {
+      "name": "Guest answers (demo)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        200
+      ],
+      "webhookId": "8c3f4e5a-6b7c-4d81-9ea2-b4c5d6e7f821",
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "guests-reply",
+        "responseMode": "lastNode",
+        "options": {
+          "responseCode": {
+            "values": {
+              "responseCode": "customCode",
+              "customCode": 303
+            }
+          },
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Location",
+                "value": "/webhook/guests?new=1"
+              }
+            ]
+          }
+        },
+        "responseData": "noData"
+      },
+      "id": "0bcab928-d7ff-4644-b4e0-7b54a655a32e"
+    },
+    {
+      "name": "Guest message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        200
+      ],
+      "parameters": {
+        "jsCode": "const CFG = {\"business\":\"Little Fig Kitchen\",\"ownerName\":\"Sam\",\"city\":\"Portland\",\"reviewLink\":\"https://littlefig.kitchen/review\",\"testMode\":true,\"aiModel\":\"claude-opus-5-5\"};\n// Shared helpers, added to the top of every Code node by build.js. CFG comes from config.json.\nconst today = (typeof $now !== 'undefined' && $now && $now.toISODate) ? $now.toISODate() : new Date().toISOString().slice(0, 10);\nconst nowIso = new Date().toISOString();\nconst MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];\nconst DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];\nconst num = (v) => { const n = Number(v); return Number.isFinite(n) ? n : 0; };\nconst esc = (s) => String(s ?? '').replace(/[&<>\"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', \"'\": '&#39;' }[c]));\nconst parseJson = (s, fallback) => { try { const v = JSON.parse(s); return v ?? fallback; } catch { return fallback; } };\nconst fmtDate = (s) => { const d = new Date(s); return isNaN(d) ? '' : `${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}`; };\nconst daysAgoIso = (n, h = 19, m = 0) => { const d = new Date(Date.now() - n * 86400000); d.setUTCHours(h, m, 0, 0); return d.toISOString(); };\nconst ago = (s) => {\n  const mins = Math.round((Date.now() - new Date(s).getTime()) / 60000);\n  if (!Number.isFinite(mins)) return '';\n  if (mins < 2) return 'just now';\n  if (mins < 60) return `${mins} min ago`;\n  const h = Math.round(mins / 60); if (h < 24) return `${h} hour${h > 1 ? 's' : ''} ago`;\n  const d = Math.round(h / 24); return d === 1 ? 'yesterday' : `${d} days ago`;\n};\nconst first = (name) => String(name || '').trim().split(/\\s+/)[0] || 'there';\n\n// What people talk about, and how each one is called on screen.\nconst TOPICS = { food: 'Food', service: 'Service', wait_time: 'Wait time', price: 'Price', cleanliness: 'Cleanliness', atmosphere: 'Atmosphere', delivery: 'Takeout and delivery', staff: 'Staff', drinks: 'Drinks', other: 'Other' };\n\n// The owner's own voice, carried into English. Every prompt that writes text includes this.\nconst VOICE = `Write in ${CFG.ownerName}'s own voice, in English. ${CFG.ownerName} owns ${CFG.business}, a small neighborhood restaurant in ${CFG.city}. This is how he writes:\n- Connected, the way he talks: one flowing thought where each sentence comes out of the one before, joined with \"and\", \"but\", \"so\", \"because\". Not a string of short separate sentences, and not many full stops.\n- Natural order: thank them or acknowledge what happened, then the specific thing they mentioned, then how he feels about it, then what happens next or an invitation.\n- Warm and plain: everyday words, the guest's first name, and the real details they mentioned (the dish, the server, the night), never generic praise.\n- When something went wrong he owns it without excuses or arguing, he says the feeling plainly (\"I'm really sorry, that's not what we want anyone to get\"), and he offers something concrete like asking them to reach out or come back on him.\n- Fair: if he disagrees with something he says it gently and admits their side first.\n- Words like \"really\", \"honestly\", \"totally\" show up now and then, never all together.\n- Never: corporate phrases (we value your feedback, we strive, we apologize for any inconvenience, valued customer), em dashes, exclamation marks, emoji, hashtags, or a wise-sounding closing line.`;\n\n// The guest's answer typed on the phone page.\nconst b = $input.first().json.body || {};\nconst stars = Math.min(5, Math.max(1, Math.round(num(b.stars) || 0)));\nconst text = String(b.text || '').trim().slice(0, 1500);\nif (!b.guest_id || (!text && !num(b.stars))) return [];\nreturn [{ json: { guest_id: String(b.guest_id), direction: 'in', at: nowIso, body: `${stars}. ${text}`.trim() } }];\n\n"
+      },
+      "id": "781b2f7e-8912-4770-87a0-a56d77f1412a"
+    },
+    {
+      "name": "Save guest message",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        480,
+        200
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "insert",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Review desk texts"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": null
+        },
+        "options": {}
+      },
+      "id": "93cab1a2-da4e-4d19-9098-45b9f2343844"
+    },
+    {
+      "name": "Get guests for answer",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        720,
+        200
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Review desk guests"
+        },
+        "matchType": "anyCondition",
+        "filters": {},
+        "returnAll": true
+      },
+      "executeOnce": true,
+      "alwaysOutputData": true,
+      "id": "24aac302-1c24-4457-9578-b2dcc48eb58e"
+    },
+    {
+      "name": "Get reviews",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        960,
+        200
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Review desk reviews"
+        },
+        "matchType": "anyCondition",
+        "filters": {},
+        "returnAll": true
+      },
+      "executeOnce": true,
+      "alwaysOutputData": true,
+      "id": "05886231-cd39-4085-866a-80ea32ab7c98"
+    },
+    {
+      "name": "Prepare AI",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1200,
+        200
+      ],
+      "parameters": {
+        "jsCode": "const CFG = {\"business\":\"Little Fig Kitchen\",\"ownerName\":\"Sam\",\"city\":\"Portland\",\"reviewLink\":\"https://littlefig.kitchen/review\",\"testMode\":true,\"aiModel\":\"claude-opus-5-5\"};\n// Shared helpers, added to the top of every Code node by build.js. CFG comes from config.json.\nconst today = (typeof $now !== 'undefined' && $now && $now.toISODate) ? $now.toISODate() : new Date().toISOString().slice(0, 10);\nconst nowIso = new Date().toISOString();\nconst MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];\nconst DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];\nconst num = (v) => { const n = Number(v); return Number.isFinite(n) ? n : 0; };\nconst esc = (s) => String(s ?? '').replace(/[&<>\"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', \"'\": '&#39;' }[c]));\nconst parseJson = (s, fallback) => { try { const v = JSON.parse(s); return v ?? fallback; } catch { return fallback; } };\nconst fmtDate = (s) => { const d = new Date(s); return isNaN(d) ? '' : `${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}`; };\nconst daysAgoIso = (n, h = 19, m = 0) => { const d = new Date(Date.now() - n * 86400000); d.setUTCHours(h, m, 0, 0); return d.toISOString(); };\nconst ago = (s) => {\n  const mins = Math.round((Date.now() - new Date(s).getTime()) / 60000);\n  if (!Number.isFinite(mins)) return '';\n  if (mins < 2) return 'just now';\n  if (mins < 60) return `${mins} min ago`;\n  const h = Math.round(mins / 60); if (h < 24) return `${h} hour${h > 1 ? 's' : ''} ago`;\n  const d = Math.round(h / 24); return d === 1 ? 'yesterday' : `${d} days ago`;\n};\nconst first = (name) => String(name || '').trim().split(/\\s+/)[0] || 'there';\n\n// What people talk about, and how each one is called on screen.\nconst TOPICS = { food: 'Food', service: 'Service', wait_time: 'Wait time', price: 'Price', cleanliness: 'Cleanliness', atmosphere: 'Atmosphere', delivery: 'Takeout and delivery', staff: 'Staff', drinks: 'Drinks', other: 'Other' };\n\n// The owner's own voice, carried into English. Every prompt that writes text includes this.\nconst VOICE = `Write in ${CFG.ownerName}'s own voice, in English. ${CFG.ownerName} owns ${CFG.business}, a small neighborhood restaurant in ${CFG.city}. This is how he writes:\n- Connected, the way he talks: one flowing thought where each sentence comes out of the one before, joined with \"and\", \"but\", \"so\", \"because\". Not a string of short separate sentences, and not many full stops.\n- Natural order: thank them or acknowledge what happened, then the specific thing they mentioned, then how he feels about it, then what happens next or an invitation.\n- Warm and plain: everyday words, the guest's first name, and the real details they mentioned (the dish, the server, the night), never generic praise.\n- When something went wrong he owns it without excuses or arguing, he says the feeling plainly (\"I'm really sorry, that's not what we want anyone to get\"), and he offers something concrete like asking them to reach out or come back on him.\n- Fair: if he disagrees with something he says it gently and admits their side first.\n- Words like \"really\", \"honestly\", \"totally\" show up now and then, never all together.\n- Never: corporate phrases (we value your feedback, we strive, we apologize for any inconvenience, valued customer), em dashes, exclamation marks, emoji, hashtags, or a wise-sounding closing line.`;\n\nconst entry = $('Guest message').first().json;\nconst g = $('Get guests for answer').all().map((i) => i.json).find((x) => x.guest_id === entry.guest_id) || {};\nconst stars = num(entry.body.split('.')[0]);\nconst comment = entry.body.replace(/^\\d\\.\\s*/, '');\nconst SCHEMA = {\n  type: 'object', additionalProperties: false, required: ['topics', 'summary', 'guest_reply', 'owner_alert', 'fix_suggestion'],\n  properties: {\n    topics: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['topic', 'feeling', 'detail'], properties: {\n      topic: { type: 'string', enum: Object.keys(TOPICS), description: 'delivery covers takeout and delivery orders, including food arriving cold' },\n      feeling: { type: 'string', enum: ['positive', 'negative'] }, detail: { type: 'string', description: 'A few words in the guest\\'s own words' } } } },\n    summary: { type: 'string', description: 'One short plain line' },\n    guest_reply: { type: 'string', description: 'The text message back to the guest, 1 to 3 sentences. For 4 or 5 stars thank them and ask for a short public review, ending with the placeholder [REVIEW_LINK]. For 3 stars or less do not ask for a review: apologize for the specific thing and offer to make it right, like their next visit or order on you.' },\n    owner_alert: { type: 'string', description: `For 3 stars or less: a note to ${CFG.ownerName}, 2 sentences at most, saying what happened, what you already told the guest, and that nothing went public. Empty for happy guests.` },\n    fix_suggestion: { type: 'string', description: 'One short sentence with one practical thing to change if there was a real problem, else empty' },\n  },\n};\nconst SYSTEM = `You text guests of ${CFG.business}, a small neighborhood restaurant in ${CFG.city}, after their visit, on behalf of ${CFG.ownerName}.\nThis is a private text conversation, not a public review, so keep it short and human like a real text message, no greeting line like \"Dear\", no sign-off.\nNever promise money back, only things like their next visit or order on ${CFG.ownerName}.\n\n${VOICE}`;\nreturn [{ json: { stars, comment, aiBody: {\n  model: CFG.aiModel, max_tokens: 1200, system: SYSTEM, fallbacks: 'default',\n  output_config: { effort: 'low', format: { type: 'json_schema', schema: SCHEMA } },\n  messages: [{ role: 'user', content: `Guest: ${g.name}\\nVisit: ${g.visit_type}, party of ${g.party}, they had ${g.ordered}\\nTheir answer: ${stars} out of 5\\nThey wrote: ${comment || '(nothing else)'}` }],\n} } }];\n\n"
+      },
+      "id": "7ea626a0-750c-4d0f-a396-0f68c3fd1196"
+    },
+    {
+      "name": "AI reads the answer",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1440,
+        200
+      ],
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "anthropicApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "anthropic-version",
+              "value": "2026-10-21"
+            },
+            {
+              "name": "anthropic-beta",
+              "value": "server-side-fallback-2026-07-01"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.aiBody) }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "260f4412-1393-4041-a8bb-d78a89243340"
+    },
+    {
+      "name": "Decide",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1680,
+        200
+      ],
+      "parameters": {
+        "jsCode": "const CFG = {\"business\":\"Little Fig Kitchen\",\"ownerName\":\"Sam\",\"city\":\"Portland\",\"reviewLink\":\"https://littlefig.kitchen/review\",\"testMode\":true,\"aiModel\":\"claude-opus-5-5\"};\n// Shared helpers, added to the top of every Code node by build.js. CFG comes from config.json.\nconst today = (typeof $now !== 'undefined' && $now && $now.toISODate) ? $now.toISODate() : new Date().toISOString().slice(0, 10);\nconst nowIso = new Date().toISOString();\nconst MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];\nconst DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];\nconst num = (v) => { const n = Number(v); return Number.isFinite(n) ? n : 0; };\nconst esc = (s) => String(s ?? '').replace(/[&<>\"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', \"'\": '&#39;' }[c]));\nconst parseJson = (s, fallback) => { try { const v = JSON.parse(s); return v ?? fallback; } catch { return fallback; } };\nconst fmtDate = (s) => { const d = new Date(s); return isNaN(d) ? '' : `${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}`; };\nconst daysAgoIso = (n, h = 19, m = 0) => { const d = new Date(Date.now() - n * 86400000); d.setUTCHours(h, m, 0, 0); return d.toISOString(); };\nconst ago = (s) => {\n  const mins = Math.round((Date.now() - new Date(s).getTime()) / 60000);\n  if (!Number.isFinite(mins)) return '';\n  if (mins < 2) return 'just now';\n  if (mins < 60) return `${mins} min ago`;\n  const h = Math.round(mins / 60); if (h < 24) return `${h} hour${h > 1 ? 's' : ''} ago`;\n  const d = Math.round(h / 24); return d === 1 ? 'yesterday' : `${d} days ago`;\n};\nconst first = (name) => String(name || '').trim().split(/\\s+/)[0] || 'there';\n\n// What people talk about, and how each one is called on screen.\nconst TOPICS = { food: 'Food', service: 'Service', wait_time: 'Wait time', price: 'Price', cleanliness: 'Cleanliness', atmosphere: 'Atmosphere', delivery: 'Takeout and delivery', staff: 'Staff', drinks: 'Drinks', other: 'Other' };\n\n// The owner's own voice, carried into English. Every prompt that writes text includes this.\nconst VOICE = `Write in ${CFG.ownerName}'s own voice, in English. ${CFG.ownerName} owns ${CFG.business}, a small neighborhood restaurant in ${CFG.city}. This is how he writes:\n- Connected, the way he talks: one flowing thought where each sentence comes out of the one before, joined with \"and\", \"but\", \"so\", \"because\". Not a string of short separate sentences, and not many full stops.\n- Natural order: thank them or acknowledge what happened, then the specific thing they mentioned, then how he feels about it, then what happens next or an invitation.\n- Warm and plain: everyday words, the guest's first name, and the real details they mentioned (the dish, the server, the night), never generic praise.\n- When something went wrong he owns it without excuses or arguing, he says the feeling plainly (\"I'm really sorry, that's not what we want anyone to get\"), and he offers something concrete like asking them to reach out or come back on him.\n- Fair: if he disagrees with something he says it gently and admits their side first.\n- Words like \"really\", \"honestly\", \"totally\" show up now and then, never all together.\n- Never: corporate phrases (we value your feedback, we strive, we apologize for any inconvenience, valued customer), em dashes, exclamation marks, emoji, hashtags, or a wise-sounding closing line.`;\n\n// Happy guests get a thank-you and the review link. Unhappy ones get an apology, and Sam gets the alert, privately.\nconst entry = $('Guest message').first().json;\nconst prep = $('Prepare AI').first().json;\nconst res = $input.first().json;\nconst block = Array.isArray(res.content) && res.content.find((c) => c.type === 'text');\nconst d = (res.stop_reason !== 'refusal' && block && parseJson(block.text, null)) || {};\nconst g = $('Get guests for answer').all().map((i) => i.json).find((x) => x.guest_id === entry.guest_id) || {};\nconst happy = prep.stars >= 4;\nlet reply = String(d.guest_reply || '').trim();\nif (!reply) reply = happy ? `Thank you so much ${first(g.name)}, that honestly made my night, and if you have a minute a short review would really help us: [REVIEW_LINK]`\n  : `I'm really sorry ${first(g.name)}, that's not what we want anyone to get, and your next visit is on me, just mention this message.`;\nif (happy) reply = reply.includes('[REVIEW_LINK]') ? reply.replace('[REVIEW_LINK]', CFG.reviewLink) : `${reply} ${CFG.reviewLink}`;\nelse reply = reply.replace(/\\s*\\[REVIEW_LINK\\]/g, '');\n\n// Same \"third time this week\" check as the public reviews.\nconst week = Date.now() - 7 * 86400000;\nconst recentNeg = [];\n$('Get reviews').all().map((i) => i.json).filter((x) => x.review_id && new Date(x.posted_at).getTime() >= week)\n  .forEach((x) => parseJson(x.topics, []).filter((t) => t.feeling === 'negative').forEach((t) => recentNeg.push(t)));\n$('Get guests for answer').all().map((i) => i.json).filter((x) => x.guest_id && x.guest_id !== g.guest_id && x.answered_at && new Date(x.answered_at).getTime() >= week)\n  .forEach((x) => parseJson(x.topics, []).filter((t) => t.feeling === 'negative').forEach((t) => recentNeg.push(t)));\nlet alert = happy ? '' : (d.owner_alert || `${g.name} wasn't happy (${prep.stars} out of 5), I said sorry and offered to make it right, and nothing went public.`);\nconst ORD = ['', 'first', 'second', 'third', 'fourth', 'fifth', 'sixth'];\nif (!happy) for (const t of (d.topics || []).filter((t) => t.feeling === 'negative')) {\n  const same = recentNeg.filter((x) => x.topic === t.topic);\n  if (same.length >= 2) { alert += ` And this is the ${ORD[same.length + 1] || (same.length + 1) + 'th'} time this week someone complained about ${TOPICS[t.topic].toLowerCase()}, so it's worth looking at with the team.`; break; }\n}\nreturn [{ json: { guest_id: g.guest_id, status: happy ? 'happy' : 'unhappy', stars: prep.stars, comment: prep.comment, topics: JSON.stringify(d.topics || []),\n  alert, fix: happy ? '' : (d.fix_suggestion || ''), answered_at: entry.at, reply } }];\n\n"
+      },
+      "id": "011a8e82-899e-4228-86e2-7f0593c25ed4"
+    },
+    {
+      "name": "Guest fields",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1920,
+        200
+      ],
+      "parameters": {
+        "jsCode": "const CFG = {\"business\":\"Little Fig Kitchen\",\"ownerName\":\"Sam\",\"city\":\"Portland\",\"reviewLink\":\"https://littlefig.kitchen/review\",\"testMode\":true,\"aiModel\":\"claude-opus-5-5\"};\n// Shared helpers, added to the top of every Code node by build.js. CFG comes from config.json.\nconst today = (typeof $now !== 'undefined' && $now && $now.toISODate) ? $now.toISODate() : new Date().toISOString().slice(0, 10);\nconst nowIso = new Date().toISOString();\nconst MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];\nconst DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];\nconst num = (v) => { const n = Number(v); return Number.isFinite(n) ? n : 0; };\nconst esc = (s) => String(s ?? '').replace(/[&<>\"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', \"'\": '&#39;' }[c]));\nconst parseJson = (s, fallback) => { try { const v = JSON.parse(s); return v ?? fallback; } catch { return fallback; } };\nconst fmtDate = (s) => { const d = new Date(s); return isNaN(d) ? '' : `${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}`; };\nconst daysAgoIso = (n, h = 19, m = 0) => { const d = new Date(Date.now() - n * 86400000); d.setUTCHours(h, m, 0, 0); return d.toISOString(); };\nconst ago = (s) => {\n  const mins = Math.round((Date.now() - new Date(s).getTime()) / 60000);\n  if (!Number.isFinite(mins)) return '';\n  if (mins < 2) return 'just now';\n  if (mins < 60) return `${mins} min ago`;\n  const h = Math.round(mins / 60); if (h < 24) return `${h} hour${h > 1 ? 's' : ''} ago`;\n  const d = Math.round(h / 24); return d === 1 ? 'yesterday' : `${d} days ago`;\n};\nconst first = (name) => String(name || '').trim().split(/\\s+/)[0] || 'there';\n\n// What people talk about, and how each one is called on screen.\nconst TOPICS = { food: 'Food', service: 'Service', wait_time: 'Wait time', price: 'Price', cleanliness: 'Cleanliness', atmosphere: 'Atmosphere', delivery: 'Takeout and delivery', staff: 'Staff', drinks: 'Drinks', other: 'Other' };\n\n// The owner's own voice, carried into English. Every prompt that writes text includes this.\nconst VOICE = `Write in ${CFG.ownerName}'s own voice, in English. ${CFG.ownerName} owns ${CFG.business}, a small neighborhood restaurant in ${CFG.city}. This is how he writes:\n- Connected, the way he talks: one flowing thought where each sentence comes out of the one before, joined with \"and\", \"but\", \"so\", \"because\". Not a string of short separate sentences, and not many full stops.\n- Natural order: thank them or acknowledge what happened, then the specific thing they mentioned, then how he feels about it, then what happens next or an invitation.\n- Warm and plain: everyday words, the guest's first name, and the real details they mentioned (the dish, the server, the night), never generic praise.\n- When something went wrong he owns it without excuses or arguing, he says the feeling plainly (\"I'm really sorry, that's not what we want anyone to get\"), and he offers something concrete like asking them to reach out or come back on him.\n- Fair: if he disagrees with something he says it gently and admits their side first.\n- Words like \"really\", \"honestly\", \"totally\" show up now and then, never all together.\n- Never: corporate phrases (we value your feedback, we strive, we apologize for any inconvenience, valued customer), em dashes, exclamation marks, emoji, hashtags, or a wise-sounding closing line.`;\n\nconst d = $('Decide').first().json;\nconst { reply, ...fields } = d;\nreturn [{ json: fields }];\n\n"
+      },
+      "id": "8a934c3f-bd71-4f79-98a5-b9ceb64388d1"
+    },
+    {
+      "name": "Update guest",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        2160,
+        200
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "update",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Review desk guests"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "guest_id",
+              "condition": "eq",
+              "keyValue": "={{ $json.guest_id }}"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": null
+        },
+        "options": {}
+      },
+      "id": "59a6e76f-910b-4f7b-b563-1aafc287d85c"
+    },
+    {
+      "name": "Reply text",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2400,
+        200
+      ],
+      "parameters": {
+        "jsCode": "const CFG = {\"business\":\"Little Fig Kitchen\",\"ownerName\":\"Sam\",\"city\":\"Portland\",\"reviewLink\":\"https://littlefig.kitchen/review\",\"testMode\":true,\"aiModel\":\"claude-opus-5-5\"};\n// Shared helpers, added to the top of every Code node by build.js. CFG comes from config.json.\nconst today = (typeof $now !== 'undefined' && $now && $now.toISODate) ? $now.toISODate() : new Date().toISOString().slice(0, 10);\nconst nowIso = new Date().toISOString();\nconst MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];\nconst DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];\nconst num = (v) => { const n = Number(v); return Number.isFinite(n) ? n : 0; };\nconst esc = (s) => String(s ?? '').replace(/[&<>\"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', \"'\": '&#39;' }[c]));\nconst parseJson = (s, fallback) => { try { const v = JSON.parse(s); return v ?? fallback; } catch { return fallback; } };\nconst fmtDate = (s) => { const d = new Date(s); return isNaN(d) ? '' : `${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}`; };\nconst daysAgoIso = (n, h = 19, m = 0) => { const d = new Date(Date.now() - n * 86400000); d.setUTCHours(h, m, 0, 0); return d.toISOString(); };\nconst ago = (s) => {\n  const mins = Math.round((Date.now() - new Date(s).getTime()) / 60000);\n  if (!Number.isFinite(mins)) return '';\n  if (mins < 2) return 'just now';\n  if (mins < 60) return `${mins} min ago`;\n  const h = Math.round(mins / 60); if (h < 24) return `${h} hour${h > 1 ? 's' : ''} ago`;\n  const d = Math.round(h / 24); return d === 1 ? 'yesterday' : `${d} days ago`;\n};\nconst first = (name) => String(name || '').trim().split(/\\s+/)[0] || 'there';\n\n// What people talk about, and how each one is called on screen.\nconst TOPICS = { food: 'Food', service: 'Service', wait_time: 'Wait time', price: 'Price', cleanliness: 'Cleanliness', atmosphere: 'Atmosphere', delivery: 'Takeout and delivery', staff: 'Staff', drinks: 'Drinks', other: 'Other' };\n\n// The owner's own voice, carried into English. Every prompt that writes text includes this.\nconst VOICE = `Write in ${CFG.ownerName}'s own voice, in English. ${CFG.ownerName} owns ${CFG.business}, a small neighborhood restaurant in ${CFG.city}. This is how he writes:\n- Connected, the way he talks: one flowing thought where each sentence comes out of the one before, joined with \"and\", \"but\", \"so\", \"because\". Not a string of short separate sentences, and not many full stops.\n- Natural order: thank them or acknowledge what happened, then the specific thing they mentioned, then how he feels about it, then what happens next or an invitation.\n- Warm and plain: everyday words, the guest's first name, and the real details they mentioned (the dish, the server, the night), never generic praise.\n- When something went wrong he owns it without excuses or arguing, he says the feeling plainly (\"I'm really sorry, that's not what we want anyone to get\"), and he offers something concrete like asking them to reach out or come back on him.\n- Fair: if he disagrees with something he says it gently and admits their side first.\n- Words like \"really\", \"honestly\", \"totally\" show up now and then, never all together.\n- Never: corporate phrases (we value your feedback, we strive, we apologize for any inconvenience, valued customer), em dashes, exclamation marks, emoji, hashtags, or a wise-sounding closing line.`;\n\nconst d = $('Decide').first().json;\nreturn [{ json: { guest_id: d.guest_id, direction: 'out', at: new Date(Date.now() + 1500).toISOString(), body: d.reply } }];\n"
+      },
+      "id": "30e94038-feba-4ee2-aa08-7fe0f074bd09"
+    },
+    {
+      "name": "Save reply",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        2640,
+        200
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "insert",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Review desk texts"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": null
+        },
+        "options": {}
+      },
+      "id": "46520116-bcdd-4cf8-b00d-e603fbf54aab"
+    }
+  ],
+  "connections": {
+    "Text today's guests": {
+      "main": [
+        [
+          {
+            "node": "Get guests",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get guests": {
+      "main": [
+        [
+          {
+            "node": "Feedback texts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Feedback texts": {
+      "main": [
+        [
+          {
+            "node": "Save texts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save texts": {
+      "main": [
+        [
+          {
+            "node": "Asked",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Asked": {
+      "main": [
+        [
+          {
+            "node": "Update guests",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Guest answers (demo)": {
+      "main": [
+        [
+          {
+            "node": "Guest message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Guest message": {
+      "main": [
+        [
+          {
+            "node": "Save guest message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save guest message": {
+      "main": [
+        [
+          {
+            "node": "Get guests for answer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get guests for answer": {
+      "main": [
+        [
+          {
+            "node": "Get reviews",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get reviews": {
+      "main": [
+        [
+          {
+            "node": "Prepare AI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare AI": {
+      "main": [
+        [
+          {
+            "node": "AI reads the answer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI reads the answer": {
+      "main": [
+        [
+          {
+            "node": "Decide",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Decide": {
+      "main": [
+        [
+          {
+            "node": "Guest fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Guest fields": {
+      "main": [
+        [
+          {
+            "node": "Update guest",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update guest": {
+      "main": [
+        [
+          {
+            "node": "Reply text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reply text": {
+      "main": [
+        [
+          {
+            "node": "Save reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}

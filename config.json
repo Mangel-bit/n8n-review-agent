@@ -1,0 +1,14 @@
+{
+  "business": "Little Fig Kitchen",
+  "ownerName": "Sam",
+  "city": "Portland",
+  "reviewLink": "https://littlefig.kitchen/review",
+  "testMode": true,
+  "aiModel": "claude-opus-5-5",
+  "credentials": {
+    "anthropic": {
+      "id": "",
+      "name": "Anthropic account"
+    }
+  }
+}
